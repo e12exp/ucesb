@@ -58,6 +58,10 @@ struct config_opts
   int _scramble;
 #endif
 
+#ifdef USE_INPUTFILTER
+  int _enable_eventbuilder;
+#endif
+
 #ifdef USE_LMD_INPUT
   int _event_stitch_mode;
   int _event_stitch_value;

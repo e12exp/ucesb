@@ -728,7 +728,11 @@ void ucesb_event_loop::open_source(config_input &input,
   // The following should preferably have been something like:
   // typedef __typeof__(_sources.value_type::_src) source_type;
 
+#ifdef USE_INPUTFILTER
+  typedef lmd_source_multievent source_type;
+#else
   typedef lmd_source source_type;
+#endif	
 
   source_type *source = new source_type();
 

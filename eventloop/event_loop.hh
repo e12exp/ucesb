@@ -11,6 +11,10 @@
 #include "hld_input.hh"
 #include "ridf_input.hh"
 
+#ifdef USE_INPUTFILTER
+#include "lmd_source_multievent.hh"
+#endif
+
 #include "config.hh"
 #include "thread_param.hh"
 
@@ -116,7 +120,11 @@ public:
 		      vect_source_event_base,
 		      less_source_event_no> _sources_next_event;
 #else
+#ifdef USE_INPUTFILTER	
+  lmd_source_multievent _source;
+#else
   lmd_source _source;
+#endif
 #endif
   typedef lmd_event_hint source_event_hint_t;
   std::vector<output_info> _output;

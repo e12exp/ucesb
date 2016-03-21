@@ -75,6 +75,11 @@ void usage()
 #else
   printf (" (--in-tuple)       No external reader support compiled in.\n");
 #endif
+#ifdef USE_INPUTFILTER
+  printf ("  --eventbuilder    Enable multi event builder (splitting, sorting, time stitching)\n");
+#else
+  printf (" (--eventbuilder)   No support for event building compiled in.\n");
+#endif
 #ifdef USE_MERGING
   printf ("  --merge=style,N   Merge events (in order) from N files, sort by style:\n");
   printf ("                    wr, titris, eventno, or user.  (use N>=2*num EB)\n");
@@ -519,6 +524,11 @@ int main(int argc, char **argv)
 	parse_time_stamp_hist_options(post);
       }
 #endif//USE_LMD_INPUT
+#ifdef USE_INPUTFILTER
+      else if (MATCH_ARG("--eventbuilder")) {
+         _conf._enable_eventbuilder = 1;
+      }
+#endif
 #ifdef USE_MERGING
       else if (MATCH_PREFIX("--merge=",post)) {
 	parse_merge_options(post);

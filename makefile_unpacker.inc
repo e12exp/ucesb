@@ -249,6 +249,10 @@ include $(UCESB_BASE_DIR)/makefile_ext_file_writer.inc
 $(UNPACKER): $(EXT_WRITERS)
 endif
 
+ifdef USE_INPUTFILTER
+CXXFLAGS += -DUSE_INPUTFILTER=1
+endif
+
 #########################################################
 
 ifdef NTUPLE_CREATION
@@ -422,7 +426,7 @@ ifdef USE_LMD_INPUT
 CXXFLAGS     += -DUSE_LMD_INPUT=$(USE_LMD_INPUT)
 OBJS         += lmd_event.o lmd_input.o lmd_input_tcp.o \
 		tcp_pipe_buffer.o select_event.o \
-		lmd_output.o
+		lmd_output.o lmd_source_multievent.o
 ifdef USE_PTHREAD
 CXXFLAGS     += -DUSE_LMD_OUTPUT_TCP
 OBJS         += lmd_output_tcp.o
