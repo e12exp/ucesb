@@ -8,7 +8,7 @@
 #define SUBEVT_SUBTYPE 10000
 #define SUBEVT_PROCID 2
 
-#define DT (1500/17)
+#define DT (_conf._eventbuilder_ts)
 
 lmd_event *lmd_source_multievent::get_event()
 {
