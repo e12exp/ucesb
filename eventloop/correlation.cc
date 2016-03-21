@@ -1,0 +1,641 @@
+
+#include "correlation.hh"
+
+#include "typedef.hh"
+
+#include "structures.hh"
+
+#include "bitsone.hh"
+
+#include "raw_data.hh"
+#include "raw_data_correlation.hh"
+
+#include "event_base.hh"
+
+#include "../common/strndup.hh"
+
+#include "user.hh"
+
+#include "corr_plot_dense.hh"
+
+#ifdef USER_CORRELATION_STRUCT_INCLUDE
+#include USER_CORRELATION_STRUCT_INCLUDE
+#endif
+
+struct correlation_list
+{
+public:
+  correlation_list()
+  {
+    _buffer = NULL;
+  }
+
+  ~correlation_list()
+  {
+    free(_buffer);
+  }
+  // dense_corr *_corr;
+
+  int *_buffer;
+  int *_cur;
+
+public:
+  void init(int n)
+  {
+    int *np = (int *) realloc(_buffer,sizeof(int) * (size_t) n);
+    
+    if (!np)
+      ERROR("Memory allocation error.");
+
+    _buffer = np;
+  }
+
+  void reset() { _cur = _buffer; }
+
+public:
+  void add(int index) { *(_cur++) = index; }
+};
+
+#define STRUCT_MIRROR_FCNS_DECL(name)           \
+ public:                                        \
+  bool enumerate_correlations(const signal_id &id,enumerate_correlations_info *info); \
+  void add_corr_members(const class name &src,correlation_list *list WATCH_MEMBERS_PARAM) const; \
+  template<typename T,typename T_map> \
+  void add_corr_members(const multi_chunks<T,T_map> &src,correlation_list *list WATCH_MEMBERS_PARAM) const \
+  { src.add_corr_members(*this,list WATCH_MEMBERS_ARG); }
+#define STRUCT_MIRROR_TYPE(type)         type##_correlation
+#define STRUCT_MIRROR_NAME(name)         name
+#define STRUCT_MIRROR_STRUCT(type)       STRUCT_MIRROR_TYPE(type)
+#define STRUCT_MIRROR_BASE(type)         STRUCT_MIRROR_TYPE(type)
+#define STRUCT_MIRROR_TEMPLATE_ARG(arg)  arg##_correlation,arg
+#define STRUCT_MIRROR_TEMPLATE_ARG_N(arg,array)  arg##_correlation array,arg array
+#define STRUCT_MIRROR_ITEM_CTRL_BASE(name) bool name##_active
+#define STRUCT_MIRROR_ITEM_CTRL(name)      bool name##_active
+#define STRUCT_MIRROR_ITEM_CTRL_ARRAY(name,non_last_index,last_index) bitsone<last_index> name##_active non_last_index
+#define STRUCT_ONLY_LAST_UNION_MEMBER    1
+
+#include "gen/struct_mirror.hh"
+#include "gen/raw_struct_mirror.hh"
+#include "gen/cal_struct_mirror.hh"
+#ifdef USER_STRUCT
+#include "gen/user_struct_mirror.hh"
+#endif
+
+#undef  STRUCT_MIRROR_FCNS_DECL
+#undef  STRUCT_MIRROR_TYPE
+#undef  STRUCT_MIRROR_NAME
+#undef  STRUCT_MIRROR_STRUCT
+#undef  STRUCT_MIRROR_BASE
+#undef  STRUCT_MIRROR_TEMPLATE_ARG
+#undef  STRUCT_MIRROR_TEMPLATE_ARG_N
+#undef  STRUCT_MIRROR_ITEM_CTRL_BASE
+#undef  STRUCT_MIRROR_ITEM_CTRL
+#undef  STRUCT_MIRROR_ITEM_CTRL_ARRAY
+#undef  STRUCT_ONLY_LAST_UNION_MEMBER
+
+//#define APPEND_CORRELATION(x) x##_correlation
+//#define XXX(x) x
+
+//XXX(USER_STRUCT)
+//USER_STRUCT
+
+
+// correlation_event_info _event_info;
+/*
+template<typename T>
+void correlation_channel_wrap<T>::event(DATA12 value)
+{
+  // _data.collect_raw((uint) value.value,_event_info._type);
+}
+
+template<typename T>
+void correlation_channel_wrap<T>::event(DATA16 value)
+{
+
+}
+
+template<typename T>
+void correlation_channel_wrap<T>::event(DATA24 value)
+{
+
+}
+
+template<typename T>
+void correlation_channel_wrap<T>::event(DATA32 value)
+{
+
+}
+
+template<typename T>
+void correlation_channel_wrap<T>::event(float  value)
+{
+
+}
+*/
+/*
+template<typename T>
+void correlation_channel_wrap<T>::event(uint32 value)
+{
+
+}
+*/
+
+template<typename T>
+bool corr_item_nonzero(const T &src)
+{
+  return src != 0;
+}
+
+bool corr_item_nonzero(const rawdata64 &src) { return src.value != 0; }
+bool corr_item_nonzero(const rawdata32 &src) { return src.value != 0; }
+bool corr_item_nonzero(const rawdata24 &src) { return src.value != 0; }
+bool corr_item_nonzero(const rawdata16 &src) { return src.value != 0; }
+bool corr_item_nonzero(const rawdata12 &src) { return src.value != 0; }
+bool corr_item_nonzero(const rawdata8  &src) { return src.value != 0; }
+
+template<typename T>
+void add_corr_members(const T &src,const data_correlation<T> &corr,correlation_list *list WATCH_MEMBERS_PARAM)
+{
+  // TODO: make sure the predication is perfect, such that we need not
+  // check corr._index
+
+  if (corr._index != -1)
+    {
+      if (corr_item_nonzero(src))
+	list->add(corr._index);
+    }
+}
+
+template<typename T>
+void data_correlation<T>::add_corr_members(const T &src,correlation_list *list WATCH_MEMBERS_PARAM) const
+{
+  ::add_corr_members(src,*this,list WATCH_MEMBERS_ARG);
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n>
+void raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::add_corr_item(const T &src,const T_correlation &corr,correlation_list *list WATCH_MEMBERS_PARAM)
+{
+  const Tsingle *p_src     = (const Tsingle *) &src;
+  const Tsingle_correlation *p = (const Tsingle_correlation *) &corr;
+  
+  for (size_t i = sizeof(T)/sizeof(Tsingle); i; --i, ++p_src, ++p)
+    {
+      // ::watch_members(*p_src,*p WATCH_MEMBERS_ARG);
+      p->add_corr_members(*p_src,list WATCH_MEMBERS_ARG);
+    }
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n>
+void raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::add_corr_members(const raw_array<Tsingle,T,n> &src,correlation_list *list WATCH_MEMBERS_PARAM) const
+{
+  for (int i = 0; i < n; i++)
+    {
+      // ::watch_members(src._items[i],_items[i] WATCH_MEMBERS_ARG);
+      add_corr_item(src._items[i],_items[i],list WATCH_MEMBERS_ARG);
+    }
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n>
+void raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::add_corr_members(const raw_array_zero_suppress<Tsingle,T,n> &src,correlation_list *list WATCH_MEMBERS_PARAM) const
+{
+  bitsone_iterator iter;
+  ssize_t i;
+  
+  while ((i = src._valid.next(iter)) >= 0)
+    {
+      // ::watch_members(src._items[i],_items[i] WATCH_MEMBERS_ARG);
+      add_corr_item(src._items[i],_items[i],list WATCH_MEMBERS_ARG);
+    }
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n>
+template<int max_entries>
+void raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::add_corr_members(const raw_array_multi_zero_suppress<Tsingle,T,n,max_entries> &src,correlation_list *list WATCH_MEMBERS_PARAM) const
+{
+  bitsone_iterator iter;
+  ssize_t i;
+  
+  while ((i = src._valid.next(iter)) >= 0)
+    {
+      // ::watch_members(src._items[i],_items[i] WATCH_MEMBERS_ARG);
+      for (uint j = 0; j < src._num_entries[i]; j++)
+	add_corr_item(src._items[i][j],_items[i],list WATCH_MEMBERS_ARG);
+    }
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n>
+void raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::add_corr_members(const raw_list_zero_suppress<Tsingle,T,n> &src,correlation_list *list WATCH_MEMBERS_PARAM) const
+{
+  for (unsigned int i = 0; i < src._num_items; i++)
+    {
+      // ::watch_members(src._items[i]._item,_items[_items[i]._index] WATCH_MEMBERS_ARG);
+      add_corr_item(src._items[i]._item,_items[src._items[i]._index],list WATCH_MEMBERS_ARG);
+    }
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n>
+void raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::add_corr_members(const raw_list_ii_zero_suppress<Tsingle,T,n> &src,correlation_list *list WATCH_MEMBERS_PARAM) const
+{
+  for (unsigned int i = 0; i < src._num_items; i++)
+    {
+      // ::watch_members(src._items[i]._item,_items[_items[i]._index] WATCH_MEMBERS_ARG);
+      add_corr_item(src._items[i],_items[i],list WATCH_MEMBERS_ARG);
+    }
+}
+
+#define FCNCALL_CLASS_NAME(name) name##_correlation
+#define FCNCALL_NAME(name) \
+  add_corr_members(const name &__src,correlation_list *list WATCH_MEMBERS_PARAM) const
+#define FCNCALL_CALL_BASE() add_corr_members(__src,list WATCH_MEMBERS_ARG)
+#define FCNCALL_CALL(member) add_corr_members(__src.member,list WATCH_MEMBERS_ARG) // show_members(signal_id(id,#member))
+#define FCNCALL_CALL_TYPE(type,member) ::add_corr_members<type>(__src.member,member,list WATCH_MEMBERS_ARG) // ::show_members<type>(signal_id(id,#member))
+#define FCNCALL_FOR(index,size) for (int index = 0; index < size; ++index)
+#define FCNCALL_SUBINDEX(index) ;
+#define FCNCALL_SUBNAME(name)   ;
+//#define FCNCALL_SUBINDEX(index) const signal_id &shadow_id = id; signal_id id(shadow_id,index);
+//#define FCNCALL_SUBNAME(name)   const signal_id &shadow_id = id; signal_id id(shadow_id,name);
+#define FCNCALL_MULTI_MEMBER(name) name
+#define FCNCALL_MULTI_ARG(name) multi_##name
+#define FCNCALL_CALL_CTRL_WRAP(ctrl,call) { if (ctrl##_active || 1) { call; } }
+#define FCNCALL_CALL_CTRL_WRAP_ARRAY(ctrl_name,ctrl_non_last_index,ctrl_last_index,call) (call)
+#define STRUCT_ONLY_LAST_UNION_MEMBER 1
+
+#include "gen/struct_fcncall.hh"
+#include "gen/raw_struct_fcncall.hh"
+#include "gen/cal_struct_fcncall.hh"
+#ifdef USER_STRUCT
+#include "gen/user_struct_fcncall.hh"
+#endif
+
+#undef  FCNCALL_CLASS_NAME
+#undef  FCNCALL_NAME
+#undef  FCNCALL_CALL_BASE
+#undef  FCNCALL_CALL
+#undef  FCNCALL_CALL_TYPE
+#undef  FCNCALL_FOR
+#undef  FCNCALL_SUBINDEX
+#undef  FCNCALL_SUBNAME
+#undef  FCNCALL_MULTI_MEMBER
+#undef  FCNCALL_MULTI_ARG
+#undef  FCNCALL_CALL_CTRL_WRAP
+#undef  FCNCALL_CALL_CTRL_WRAP_ARRAY
+#undef STRUCT_ONLY_LAST_UNION_MEMBER
+
+
+struct correlation_plot
+{
+
+public:
+  const char *_command; // for info
+  const char *_filename;
+
+public:
+  correlation_list *_list;
+  dense_corr       *_corr;
+
+  bool  _need_sort; // list may be unsorted
+
+public:
+  unpack_event_correlation *_unpack_event_correlation;
+  raw_event_correlation    *_raw_event_correlation;
+  //cal_event_correlation    *_cal_event_correlation;
+#ifdef USER_STRUCT
+  //APPEND_CORRELATION()   the_user_event_correlation;
+#endif
+};
+
+#ifndef USE_MERGING
+void correlation_one_event(correlation_plot *plot WATCH_MEMBERS_PARAM)
+{
+  /*
+  memset(&_event_info,0,sizeof(_event_info));
+
+#if defined(CORRELATION_EVENT_INFO_USER_FUNCTION)
+  CORRELATION_EVENT_INFO_USER_FUNCTION(&_event_info,
+				       &_static_event._unpack);
+#endif
+  */
+
+  plot->_list->reset();
+
+  //printf ("c1 %x %x\n",
+  //	  (int) (size_t) plot->_unpack_event_correlation,
+  //	  (int) (size_t) plot->_raw_event_correlation);
+  
+  if (plot->_unpack_event_correlation)
+    plot->_unpack_event_correlation->add_corr_members(_static_event._unpack,plot->_list WATCH_MEMBERS_ARG);
+  if (plot->_raw_event_correlation)
+    plot->_raw_event_correlation->add_corr_members(_static_event._raw,plot->_list WATCH_MEMBERS_ARG);
+
+  //the_cal_event_correlation   .watch_members(_event._cal   ,list);
+#ifdef USER_STRUCT
+  //the_user_event_correlation  .watch_members(_event._user  ,list);
+#endif
+
+  // sort the entries in the list.  (in principle, this we should only
+  // do if the list may be unsorted, i.e. items might have been added
+  // in dis-order)
+
+  if (plot->_need_sort)
+    {
+      // TODO: consider using radix sort
+      // (most useful events for plot have a small number of 
+      // correlations however)
+      // printf ("%d ",plot->_list->_cur - plot->_list->_buffer);
+      qsort(plot->_list->_buffer,
+	    (size_t) (plot->_list->_cur - plot->_list->_buffer),
+	    sizeof(int),compare_values<int>);
+    }
+
+  // printf ("c2 %d\n",plot->_list->_cur - plot->_list->_buffer);
+
+  plot->_corr->add(plot->_list->_buffer,plot->_list->_cur);
+
+  // printf (".%d",plot->_list->_cur - plot->_list->_buffer);
+}
+#endif//!USE_MERGING
+
+
+
+
+
+
+
+
+
+
+template<typename T>
+bool enumerate_correlations(data_correlation<T> &correlation,const signal_id &id,enumerate_correlations_info *info)
+{
+  if (!info->_requests->is_channel_requested(id,false,0,false) ||
+      correlation._index != -1)
+    return correlation._index != -1; // we were perhaps selected before?
+  
+  correlation._index = info->_next_index;
+  info->_next_index++;
+  /*
+  char name[256];
+  {
+    signal_id id_fmt(id);
+    id_fmt.format_paw(name,sizeof(name));
+  }
+  */
+
+  return true;
+}
+
+template<typename T>
+bool data_correlation<T>::enumerate_correlations(const signal_id &id,enumerate_correlations_info *info)
+{
+  // ::watch_members(src,_items[i] WATCH_MEMBERS_ARG);
+  return ::enumerate_correlations(*this,id,info);
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n>
+bool raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::enumerate_correlations(const signal_id &id,
+										  enumerate_correlations_info *info)
+{
+  bool active = false;
+
+  for (int i = 0; i < n; i++)
+    active |= _items[i].enumerate_correlations(signal_id(id,i),info);
+
+  return active;
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n,int n1>
+bool raw_array_correlation_1<Tsingle_correlation,Tsingle,T_correlation,T,n,n1>::enumerate_correlations(const signal_id &id,
+										       enumerate_correlations_info *info)
+{
+  bool active = false;
+
+  for (int i = 0; i < n; i++)
+    for (int i1 = 0; i1 < n1; ++i1)
+      active |= (raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::_items[i])[i1].
+	enumerate_correlations(signal_id(signal_id(id,i),i1),info);
+
+  return active;
+}
+
+template<typename Tsingle_correlation,typename Tsingle,typename T_correlation,typename T,int n,int n1,int n2>
+bool raw_array_correlation_2<Tsingle_correlation,Tsingle,T_correlation,T,n,n1,n2>::enumerate_correlations(const signal_id &id,
+										       enumerate_correlations_info *info)
+{
+  bool active = false;
+
+  for (int i = 0; i < n; i++)
+    for (int i1 = 0; i1 < n1; ++i1)
+      for (int i2 = 0; i2 < n2; ++i2)
+	active |= (raw_array_correlation<Tsingle_correlation,Tsingle,T_correlation,T,n>::_items[i])[i1][i2].
+	  enumerate_correlations(signal_id(signal_id(signal_id(id,i),i1),i2),info);
+
+  return active;
+}
+
+
+
+
+#define FCNCALL_CLASS_NAME(name) name##_correlation
+#define FCNCALL_NAME(name) \
+  enumerate_correlations(const signal_id &__id,enumerate_correlations_info *__info)
+#define FCNCALL_CALL_BASE() enumerate_correlations(__id,__info)
+#define FCNCALL_CALL(member) enumerate_correlations(__id,__info)
+#define FCNCALL_CALL_TYPE(type,member) ::enumerate_correlations<type>(member,__id,__info)
+#define FCNCALL_FOR(index,size) for (int index = 0; index < size; ++index)
+#define FCNCALL_SUBINDEX(index) const signal_id &__shadow_id = __id; signal_id __id(__shadow_id,index); bool &__shadow_active = active; bool active = false;
+#define FCNCALL_SUBINDEX_END(index) __shadow_active |= active;
+#define FCNCALL_SUBNAME(name)   const signal_id &__shadow_id = __id; signal_id __id(__shadow_id,name);
+//#define FCNCALL_SUBINDEX(index) const signal_id &shadow_id = id; signal_id id(shadow_id,index);
+//#define FCNCALL_SUBNAME(name)   const signal_id &shadow_id = id; signal_id id(shadow_id,name);
+#define FCNCALL_MULTI_MEMBER(name) name
+#define FCNCALL_MULTI_ARG(name) name
+#define FCNCALL_CALL_CTRL_WRAP(ctrl,call) ctrl##_active = (call)
+#define FCNCALL_CALL_CTRL_WRAP_ARRAY(ctrl_name,ctrl_non_last_index,ctrl_last_index,call) active |= ((call) ? (ctrl_name##_active ctrl_non_last_index.set(ctrl_last_index)) , true : false)
+#define FCNCALL_RET_TYPE bool
+#define FCNCALL_INIT     bool active = false;
+#define FCNCALL_RET      return active;
+#define STRUCT_ONLY_LAST_UNION_MEMBER 1
+
+#include "gen/struct_fcncall.hh"
+#include "gen/raw_struct_fcncall.hh"
+#include "gen/cal_struct_fcncall.hh"
+#ifdef USER_STRUCT
+#include "gen/user_struct_fcncall.hh"
+#endif
+
+#undef  FCNCALL_CLASS_NAME
+#undef  FCNCALL_NAME
+#undef  FCNCALL_CALL_BASE
+#undef  FCNCALL_CALL
+#undef  FCNCALL_CALL_TYPE
+#undef  FCNCALL_FOR
+#undef  FCNCALL_SUBINDEX
+#undef  FCNCALL_SUBNAME
+#undef  FCNCALL_MULTI_MEMBER
+#undef  FCNCALL_MULTI_ARG
+#undef  FCNCALL_RET_TYPE
+#undef  FCNCALL_INIT
+#undef  FCNCALL_RET
+#undef  FCNCALL_CALL_CTRL_WRAP
+#undef  FCNCALL_CALL_CTRL_WRAP_ARRAY
+#undef STRUCT_ONLY_LAST_UNION_MEMBER
+
+
+
+typedef std::vector<correlation_plot *> correlation_plot_vect;
+
+correlation_plot_vect _correlation_plots;
+
+correlation_plot *correlation_init(const char *command)
+{
+  correlation_plot *cp = new correlation_plot;
+
+  cp->_command = command; // just for debugging...
+  cp->_filename = NULL;
+  cp->_list = NULL;
+  cp->_corr = NULL;
+  cp->_need_sort = false; // must be set if we call the enumerate functions more than once!
+
+  cp->_unpack_event_correlation = NULL;
+  cp->_raw_event_correlation = NULL;
+
+  enumerate_correlations_info info;
+  
+  info._next_index = 0;
+  
+  for ( ; ; )
+    {
+      detector_requests requests;
+      
+      const char *req_end;
+      
+      while ((req_end = strpbrk(command,",:")) != NULL)
+	{
+	  char *request = strndup(command,(size_t) (req_end-command));
+	  
+#define MATCH_ARG(name) (strcmp(request,name) == 0)
+	  
+	  // printf ("Request: %s\n",request);
+	  /*
+	    if (MATCH_ARG("UNPACK"))
+	    request_level |= NTUPLE_WRITER_UNPACK;
+	    else if (MATCH_ARG("RAW"))
+	    request_level |= NTUPLE_WRITER_RAW;
+	    else if (MATCH_ARG("CAL"))
+	    request_level |= NTUPLE_WRITER_CAL;
+	    else if (MATCH_ARG("USER"))
+	    request_level |= NTUPLE_WRITER_USER;
+	    else if (MATCH_ARG("RWN"))
+	    _paw_ntuple._ntuple_type = NTUPLE_TYPE_RWN;
+	    else if (MATCH_ARG("CWN"))
+	    _paw_ntuple._ntuple_type = NTUPLE_TYPE_CWN;
+	    else
+	  */
+	  requests.add_detector_request(request,0);
+	  
+	  free(request);
+	  command = req_end+1;      
+
+	  if (*req_end == ':')
+	    {
+	      // Since we'll run over the data more than once, we may need sorting...
+	      cp->_need_sort = true;
+	      break;
+	    }
+	}
+
+      requests.prepare();
+
+      info._requests = &requests;
+
+      if (!cp->_unpack_event_correlation)
+	cp->_unpack_event_correlation = new unpack_event_correlation;
+      if (!cp->_raw_event_correlation)
+	cp->_raw_event_correlation = new raw_event_correlation;
+
+      if (!cp->_unpack_event_correlation->enumerate_correlations(signal_id(),&info) && 0)
+	{
+	  delete cp->_unpack_event_correlation;
+	  cp->_unpack_event_correlation = NULL;
+	}
+      if (!cp->_raw_event_correlation->enumerate_correlations(signal_id(),&info) && 0)
+	{
+	  delete cp->_raw_event_correlation;
+	  cp->_raw_event_correlation = NULL;
+	}
+      //the_cal_event_correlation   .enumerate_correlations(signal_id(),info);
+#ifdef USER_STRUCT
+      //the_user_event_correlation  .watch_members(_event._user   CORRELATION_MEMBERS_ARG);
+#endif
+      
+      for (uint i = 0; i < requests._requests.size(); i++)
+	if (!requests._requests[i]._checked)
+	  ERROR("Correlation request for item %s was not considered.  "
+		"Does that detector exist?",
+		requests._requests[i]._str);
+
+      if (!req_end)
+	break;
+    }
+
+  cp->_filename = command;
+
+  // now, how many items did we get?
+
+  int n = info._next_index;
+
+  cp->_corr = new dense_corr();
+  cp->_corr->clear((size_t) n);
+
+  cp->_list = new correlation_list;
+  cp->_list->init(n);
+
+  return cp;
+}
+
+void correlation_init(const config_command_vect &commands)
+{
+  config_command_vect::const_iterator iter;
+
+  for (iter = commands.begin(); iter != commands.end(); ++iter)
+    {
+      const char *command = *iter;
+
+      correlation_plot *cp = correlation_init(command);
+
+      _correlation_plots.push_back(cp);      
+    }
+}
+
+
+#ifndef USE_MERGING
+void correlation_event(WATCH_MEMBERS_SINGLE_PARAM)
+{
+#if defined(CORRELATION_EVENT_INFO_USER_FUNCTION)
+  if (!CORRELATION_EVENT_INFO_USER_FUNCTION(&_static_event._unpack))
+    return;
+#endif
+
+  correlation_plot_vect::iterator iter;
+
+  for (iter = _correlation_plots.begin(); iter != _correlation_plots.end(); ++iter)
+    {
+      correlation_plot *cp = *iter;
+
+      correlation_one_event(cp WATCH_MEMBERS_ARG);
+    }
+}
+#endif//!USE_MERGING
+
+void correlation_exit()
+{
+  correlation_plot_vect::iterator iter;
+
+  for (iter = _correlation_plots.begin(); iter != _correlation_plots.end(); ++iter)
+    {
+      correlation_plot *cp = *iter;
+
+      cp->_corr->picture(cp->_filename);
+   }
+}
+

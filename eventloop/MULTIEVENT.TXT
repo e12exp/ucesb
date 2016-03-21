@@ -1,0 +1,105 @@
+
+Multi-event unpacking is somewhat complicated, but can hopefully mbe
+made quite straight-forward.
+
+The 'trouble' is that within each event in the event stream in the
+file, is the data for several events, in essentially random order.
+
+But not completely random.  We expect it to in one way or another be
+packed into chunks, which each are belonging to exactly one event,
+such that it can be decided to which (multi-subevent) it belongs.
+(The word subevent is already in use for parts of an event in the
+file).
+
+Since the unpacking and mapping to raw data already takes place in two
+stages, first unpacking the data from the events into data structures
+holding the data from each module, and then from the modules to the
+raw data structures for each event, we'll insert the
+multi-event-handling in such a way that most of the functionality is
+retained:
+
+requirement: the raw data structures are still per physical event.
+I.e. such that one can then dump ntuples / call user functions once
+per multi-subevent.
+
+would be good: The user function also gets called with the data from
+each module, one then would also like to be able to see the data from
+each module per multi-subevent.  We'll introduce a new user function
+for looking at the module data for an entire file-event, since this
+might be of interest for debugging the DAQ, but probably not the
+physics performance of an experiment.
+
+We'd like the user function interface to the data (data structure
+member names etc) to be unchanged between multi- and singe-event mode.
+This will be done by keeping the original data structure member name
+and make it an refernce, which for each loop turn can be made to point
+to the appropriate data from that module per that event.  Should there
+be no appropriate data, we'll let it point to an statically
+initialized clean data structure for that module, i.e. implicit
+zero-suppression.
+
+Another issue is how to handle data in the event which is 'global',
+i.e. does not come from a module.  Does it belong to one particular
+event, or to all.  This the mapper cannot know, and therefore one need
+to handle this data with care.  We'll however provide support for the
+case when (some) such data belongs to the last event, since this would
+make sense for certain implementations of the DAQ.  One might also
+consider some data to belong to the first event in the row.
+
+So, we have the following new declarations, controlling the behaviour
+of the code:
+
+For the makefile_additional.inc:
+
+(First the old one :-) )
+
+EVENTUSERFUNCTION=identifier
+
+C name of user function (for looking at physical events), with prototype
+	
+void user_function(unpack_event *event,
+		   raw_event    *raw_event);
+
+FULLEVENTUSERFUNCTION=identifier
+
+C name of user function (for looking at full file events), with prototype
+	
+int event_user_function(unpack_event *event);
+
+The FULLEVENTUSERFUNCTION can also be used to validate that the event
+is internally consistent.  If not, it may call the ERROR macro, which
+will abort the handling of the event, i.e. no multi-subevents will be
+processed (no calls to the user_function).
+
+USING_MULTI_EVENTS=1
+
+Declares that the multi-subevents is enabled.  The data structures are
+allocated dynamically as needed for each module.  They are never freed
+again, i.e. space is used as needed by the largest event.  Note: a
+large number is not particularly harmful, as the memory actually wont
+can be swapped out unless actually used again.  This is necesary for
+multi-event handling, and it being defined, actually makes the code
+compile and prepare for such handling.
+
+For the SIGNAL statements in the .spec file, the added keywords (to be
+added behind the data type, FIRST_EVENT and LAST_EVENT should control
+if the mapping is to be applied for only certain events.  The use of
+these with data which is in principle available per each
+multi-subevent is not recommended (possibly forbidden).
+
+For the specification lists, the keyword 'multi' before an module or
+other specifiction (of the form 'name = STRUCT();' declares that this
+entry is multi-event capable, or rather that it may occur several
+times, and that for each time, the next item in the list should be
+filled.
+
+---
+
+Assigning which multi-subevent each item for a particular module
+belongs to must necessarily be done by some kind of user code, since
+it somehow needs to a) look into that particular chunk and find the
+event counter (or equivalent), and also need to know for which event
+counter number to which sub-event it should be assigned.  It is also
+the responsibility of it to return the number of multi-events in the
+event.  0 is then a way to quietly ignore all the events without
+throwing an error.  (also when running in single-event mode).

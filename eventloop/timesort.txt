@@ -1,0 +1,174 @@
+
+Ideas for time sorting...
+
+To support a trigger-less DAQ operation (possibly with us running
+somewhere within the DAQ), we'd like to be able to help with the time
+sorting and coincidence building stages.  A lot of our functionality
+in terms of unpacking and data member mapping could be handy in those
+scenarios too.  It is, however, certainly recommended to make any
+online coincidence and other data cutting requirements as SIMPLE as
+possible.  I.e. to be as little fancy as affordable.  The rule of
+thumb should not necessarily be to find interesting things, but to get
+rid of the uninteresting.  I.e. the reason for cutting away data is to
+reduce the total amount of data.
+
+And, due to the ease of mistakes, in e.g. mappings, the selections
+should be broad, and require as little correct detailed mappings as
+possible.  And the data to be stored as output, should also be as
+close to the original (UNPACK) level data as possible, and not mapped.
+Since mappings (almost by definition) are wrong!  I.e. do not make a
+requirement for e.g. two PM tubes of the same paddle to see something,
+but rather that a certain number of PM tubes in the detector as a
+whole sees something.
+
+We should however support whatever cuts one might want to try, and
+also to mix things from UNPACK, RAW, CAL and USER levels.
+
+Basic strategy: with a continuously running acquisition, there are no
+events, so á priori, there are no boundaries.  Therefore each element
+from the trigger-less systems must come in small basic blocks, each
+with an assigned time stamp.  Data from triggered systems can be
+bunched together, ..., into complete events.  They must, if one wants
+to sort them in, also have some time stamps attached.
+
+Each basic item may however contain several values (variables) or
+arrays, or whatever.  But they would generally be very small.  E.g. an
+amplitude with an associated time (and likely an channel index or so).
+
+We treat the data as several time-lines of information, with each
+being sorted separately in time before coincidences are calculated.
+Each time-line can contain one sort of basic blocks, each with it's
+own time.  This also helps 'zero-suppression' or in this case:
+reduction of number of time-lines.  We need not handle one time-line
+per channel, but can operate them as one time-line per kind of channel
+(or detector, or whatever).  Each channel may however need to (before
+sorting) have an individual time offset applied, such that
+synchronisation is achieved.  And together with that also an
+uncertainty (or something to handle overlap windows).
+
+The actual coincidence building is essentially evaluating an expression
+tree in time.  This can be done by cutting it down into its respective
+operations (AND, OR, MULTIPLICITY, ABOVE_THRESHOLD, etc...) which then
+also deliver values along the time axis.  And from each line of
+values, further expressions are evaluated.  Whenever some expression
+evaluates to true, it is allowed to set a trigger.  The trigger will
+then finally record the information.
+
+For sub-process processing, we should also make it possible to send
+along the evaluated time-lines to later processes, for more building.
+The time-lines anyhow will be rather simple, and contain one (or more?)
+variables with the breakpoints in time where the value changes.  The
+later processing stages must then only follow them, basically like a
+merge sort.
+
+The data is coming from many various sources, whose readouts are not
+synchronised, and whose elements may appear in any random order, even
+partially overlapping in time with data it sent earlier and data it
+will send later.  The overall time sorter will require information
+from each line as it reached the end of the available line.  That line
+must then supply further information to allow coincidence calculations
+to continue.  As information is provided in a new block of data, it is
+unpacked into basic blocks, each with a time.  To avoid reordering the
+(large?) amounts of data in each basic block, a set of pointers
+(references) into the raw data are made.  These can then be sorted
+into the existing time-line (where overlaps may occur), so carefulness
+is required to not go too far.  The sorting may be done with several
+different methods, depending on the time span to be covered compared
+to the number of items.  With large numbers, radix sort will probably
+be most efficient (great benefit of static time and no branching),
+while smaller spans can benefit from other strategies.
+
+One thing one may want to do is to first make time-lines of some
+detector systems, after which a small event with this data is put
+together.  E.g. some simple tracking may be performed on that data to
+provide an more advanced form of variable, which then again may go
+into the time-line system, for further triggering.
+
+The expressions to be evaluated can probably be easily described by
+some simple language, with AND, OR, MULT (as +), THRESHOLD (as >, >=)
+etc, which defines variables (like some FPGA programming).  Those
+variables are then created as time-lines, which can operate on the data
+they rely on.
+
+We also give the possibility to re-time the signals.
+STRETCH(signal,length) makes a new signal with the new length
+(re-triggerable, i.e. the new length will be effective after the end of
+the last signal).  RESHAPE(signal,length) will make a new signal,
+length long.  It's not re-triggerable, so next has to happen after the
+end.  DELAY(signal,length) will delay the signal.  Since we are
+digital, we have negative delays!  :-)
+
+
+
+// By default, the names operate on UNPACK and RAW level
+// CAL, USER have to specified
+
+TFW_MUL = MULT(TFW...T);
+
+NTF_MUL = MULT(NTF...T);
+
+LAND_MUL = MULT(N...T);
+LAND_MUL_PHYS = LAND_MUL >= 2;
+LAND_MUL_COSM = LAND_MUL >= 5;
+
+CB_OR = OR(CB...T);
+CB_SUM = SUM(CAL:CB...E);
+
+POS1_MUL = MULT(POS_1...T);
+POS2_MUL = MULT(POS_2...T);
+POS1 = POS1_MUL >= 4;
+POS2 = POS2_MUL >= 4;
+POS = POS1 && POS2;
+
+ROLU = OR(ROLU...T);
+
+POS_NO_ROLU = POS && !ROLU;
+
+FRS_S8 = OR(SCI2...T);
+
+PIX = OR(PIX...T);
+
+EARLY_PILEUP = STRETCH(POS1, 5 us); 
+// Can be checked if we have pileup before us
+
+// -------------------------------------------
+
+TRIG:MIN_BIAS = POS_NO_ROLU && SPILL_ON;
+
+TRIG:FRAG_NTF = MIN_BIAS && NTF_MUL;
+
+TRIG:CB_OR =    MIN_BIAS && CB_OR;
+
+TRIG:CB_SUM =   MIN_BIAS && CB_SUM;
+
+TRIG:MIN_BIAS_NO_PILEUP = MIN_BIAS && !EARLY_PILEUP;
+
+TRIG:PIXEL =    MIN_BIAS && PIXEL;
+
+TRIG:NEUTRON =  MIN_BIAS && NTF_MUL && LAND_MUL_PHYS;
+
+// calib:
+
+TRIG:CB_COSM =  CB_SUM; // harmless in beam
+
+TRIG:CB_GAMMA = CB_OR && !SPILL_ON; // spill gives loads of X-rays
+
+TRIG:TFW_COSM = TFW_MUL; // rather in the noise?, require higher mul?
+
+TRIG:LAND_MUON = LAND_MUL_COSM; // already high multiplicity
+
+//
+
+// The clock and tcal triggers are special within a non-triggered
+// system.  If distributed as global signals, they _must_ be triggered
+// anyhow, so we need to store data based on that fact!
+
+TRIG:TCAL = TCAL;
+
+TRIG:CLOCK = CLOCK;
+
+TRIG:BOS = BOS;
+
+TRIG:EOS = EOS;
+
+

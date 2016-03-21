@@ -1,0 +1,165 @@
+.TH ucesb 1  "February 26, 2009" "CVS version" "USER COMMANDS"
+.SH NAME
+ucesb unpacker \- unpack & check every single bit
+.SH SYNOPSIS
+.B expname/expname
+input-specification [OPTIONS]
+
+.SH DESCRIPTION
+Read and unpack event-wise experimental data from e.g. nuclear physics
+experiments, on a format given by a C structure-like description
+(before compilation of the program).
+.PP
+Provide easy access to the various data members, in form of hbook
+ntuple files, root trees, but also in user functions or for quick
+viewing from the command line.  Ability to create plots showing the
+correlation between data occurring in different detector channels,
+often helpful to quickly verify that cabling schemes are correct.  Act
+as network server to shoot the event-wise data 'into the back' of any
+other program as a simple structure.
+.PP
+Facilities for acting as a swiss army-knife to manipulate and
+transport LMD data over the network.  
+.SH OPTIONS SUMMARY
+.SH OPTIONS
+.TP
+.B
+file://SRC
+Read from file SRC.
+.TP
+.B
+rfio://
+No support for RFIO compiled in.  *
+.TP
+.B
+event://HOST
+Read from event server HOST.
+.TP
+.B
+stream://HOST
+Read from stream server HOST.
+.TP
+.B
+trans://HOST
+Read from transport HOST.
+.TP
+.B
+\-\-scramble
+Toggle scrambling of data.
+.TP
+.B
+\-\-merge
+No support for overlapping sources compiled in.  *
+.TP
+.B
+\-\-calib=FILE
+Extra input file with mapping/calibration parameters.
+.TP
+.B
+\-\-max\-events=N
+Limit number of events processed.
+.TP
+.B
+\-\-print\-buffer
+Print buffer headers.
+.TP
+.B
+\-\-print
+Print eqvent headers.
+.TP
+.B
+\-\-data
+Print event data.
+.TP
+.B
+\-\-debug
+Print events causing errors.
+.TP
+.B
+\-\-event\-sizes
+Show average sizes of events and subevents.
+.TP
+.B
+\-\-quiet
+Suppress harmless problem reports.
+.TP
+.B
+\-\-io\-error\-fatal
+Any I/O error is fatal.
+.TP
+.B
+\-\-allow\-errors
+Allow errors.
+.TP
+.B
+\-\-broken\-files
+Allow errors again after bad files.
+.TP
+.B
+\-\-help
+Print this usage information and quit.
+.TP
+.B
+\-\-output=OPT,FILE  Save events in LMD file (native/net/big/little,size=nM).
+.TP
+.B
+\-\-bad\-events=FILE
+Save events with unpack errors in LMD file.
+.TP
+.B
+\-\-server=OPT
+Data server (stream:port,trans:port,size=nM,hold).
+.TP
+.B
+\-\-show\-members
+Show members of all data structures.
+.TP
+.B
+\-\-show\-calib
+Show calibration parameters.
+.TP
+.B
+\-\-ntuple
+No PAW/ROOT ntuples support compiled in.
+.TP
+.B
+\-\-watcher
+No ncurses support compiled in.
+.TP
+.B
+\-\-corr=TRIG,DET,FILE
+Create 2D correlation plot.
+.TP
+.B
+\-\-dump=LVL
+Text dump of data from data structures.
+.TP
+.B
+\-\-threads
+No threading support compiled in.
+.TP
+.B
+\-\-files\-ahead
+No threading support compiled in.
+.TP
+.B
+\-\-progress
+No ncurses support compiled in.
+.TP
+.B
+  \-\-help 
+Show a summary of available options and quit.
+.SH EXAMPLES
+.TP
+Act as a proxy stream server (using the data-content ignoring empty 
+program):
+.B empty/empty --stream=sourcehost --server=stream
+.PP
+.SH EXIT STATUS
+The unpacker returns 0 if all (requested) events can be retrieved from 
+the input sources without excessive unpacking failures (as reported to 
+stderr).  Non-0 is returned otherwise.
+.SH AUTHOR
+Håkan T. Johansson  (f96hajo (at) chalmers (dot) se)
+.SH SEE ALSO
+empty_file(1), struct_writer(1), root_writer(1), hbook_writer(1)

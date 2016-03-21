@@ -1,0 +1,366 @@
+Time dependent calibration parameters - parabolas?
+==================================================
+
+Background - reason
+-------------------
+
+The calibration parameters of land02 are currently time-wise constant.
+If something is (slowly) drifting, the only way to approximate that is
+by giving a (long) set of piecewise constant values for the affected
+parameters, using the ranges of validity as limits.
+
+In addition to the drawback of being just painful, the inability to
+describe time-varying parameters also means that one cannot directly
+while reading a file of parameters see that they were selected to
+represent a gradual change (without close inspection).  I.e.
+'understanding' is lost.  And as the time-wise constant approximation
+also blows up the number of entries in the calibration files, it
+causes some performance degradation - in the current implementation
+especially at startup, stage A below.
+
+
+Background II - land02 calibration parameter handling
+-----------------------------------------------------
+
+The parameters are within land02 handled in a three-stage process from
+their primary storage as text files to being applied in individual
+events.
+
+A) Before any events are processed, the entire set of calibration
+    parameters for that experiment (as included from calib.cc) is
+    parsed.  This goes via preprocessing by cpp (comment removal and
+    file inclusion).  That text data is then (f)lex'ed and bison'ed
+    (parsed) into a data structure tree with all the validity ranges
+    and values.  Each value (or rather, parameter statement in the
+    original file) is a leaf in the tree.  Every validity range is a
+    node within the tree, and all enclosed values (including any
+    contained validity ranges) are child nodes belonging to that node.
+
+    This information is kept throughout the lifetime of land02
+    execution.  As this stage is only performed once, execution speed
+    is not the most critical - although long startup times are becoming
+    a nuisance.
+
+B) Before analysing (reconstructing) an event, all reconstruction
+    classes (which hold the calibration parameters in effect) must get
+    their values.  This is now easy, as we have the tree:
+
+B.i) Walk all the reconstruction classes and wipe (set-to-NaN) all
+      calibration parameters, to have a known empty state.  (Some
+      parameters do not default to NaN, but 0 (some offsets) or 1 (some
+      gains)).
+
+B.ii) Walk the tree of parameters.  For validity range nodes, only
+      enter in case the next event to be processed is within limits.
+      For every parameter (leaf), go into the reconstruction class at
+      the right location (based on the signal_id) and set the value.
+
+B.iii) Walk all the reconstruction classes again and do any
+      post-processing.  Might be to calculate internally used values
+      that depend on the calibration parameters.
+
+    In step B.ii, it is also kept track of the next event at which
+    there is a change in validity range, i.e. when stage B) has to be
+    re-run.  This stage is quite fast as no parsing is involved.  It
+    also only happens at the 'discontinuities' so execution speed would
+    anyhow not be a major concern.
+
+C) Processing of each event.  In this stage execution speed matters.
+    The calibration parameters are already in place an are used by the
+    code directly.
+
+
+What kind of time dependencies to handle?
+-----------------------------------------
+
+Bottom line: calibration parameters should be constant.  Otherwise the
+equipment misbehaved.  However, at analysis it is to late to do
+anything but cry, so better be able to deal with it instead.  Any
+reasonable thing to handle ought however be small variations!  (Side
+note: even if one could enter the parameters in easier, time-dependent
+ways, it would not become any easier to figure out the values to use
+in the first place.)
+
+Except for the good constant values, the first function to handle is
+linear relationships.  Then, for some parameters one can even see
+sinusoidal behaviour, e.g. time-offsets. Usually with the period of a
+day, with the tentative explanation being temperature variations.  The
+list can become long...
+
+Assuming one implements a set of functions f(t) to describe various
+sorts of behaviour, how would it affect the analysis?  Most important
+are the effects on stage C:
+
+1) A naive approach is to simply implement various functions at the
+    places in C where parameters are used - and somehow pass them there
+    via A and B.  At each usage, the function has to be evaluated,
+    using a time (somehow - globally?) provided.  The evaluation cost
+    will be proportional to the complexity of a function.  However...
+    as every parameter has to be made eligible for such evaluation, at
+    every single location a parameter is used, it must be selected what
+    evaluation function to use.  This involves a control-flow
+    branching, most likely as an indirect function call (function
+    pointer), which CPUs do not like at all.  I.e. bad performance hit.
+
+2) Alternatively, stage C may be spared and unchanged - the
+    reconstruction operates with piecewise constant values.  Instead,
+    stage B is charged with the task of evaluating the functions for
+    the time-range to be covered.  To keep the ranges small (and
+    thereby limiting the approximation errors), some artificial limit
+    is put, and B is called more often to thus provide smoother
+    step-functions.  Perhaps ends up being every 10000 events or so.  B
+    would come under some heavier load, but should be more affordable
+    than approach 1.  However, one may note that the effort in 1 scales
+    as the number of channels fired (times the number of events), while
+    B scales as the number of existing channels.
+
+3) As complicated functions are not likely to find wide-spread use, it
+    may be an easier approach to limit the support to quadratic
+    expressions: f(t) = a + b*t + c*t^2.  And always use them!
+    Evaluations of such expressions would not involve any branching
+    when they are unconditionally implemented in stage C.  For
+    constants and linear relationships, stage B just propagate 0 for b
+    and c.  It will involve the loading of several extra values (t, b,
+    c) compared to the constant approach, but that and the (very cheap
+    computation) is likely largely shadowed by all the other
+    (necessary) branching we anyhow have in the reconstruction
+    routines.
+
+
+Prerequisite: time variable
+---------------------------
+
+In any case, to use time-dependent variables, we must have a
+reasonable abscissa - a time variable.  Using event numbers is not
+attractive, as they increase at varying rates during an experiment.
+
+Once a time variable exists, its usage is straight-forward: put it in
+a global variable (to not have to pass it through all reconstruction
+routine function calls) and use it whenever evaluating a calibration
+parameter.  A reasonable unit would be seconds, e.g. since the time of
+the current validity range start (stage B re-evaluates t-dependent
+constants b and c for each range).
+
+Time information available in LAND setup data:
+
+- Every spill on/off event, the value of the local clock of the
+   Messhütte master CAMAC node is stored in the event.
+
+- Some events has the scalers read out, giving the 1 MHz clock.  This
+   resets every 16.6 s and has no well known 0.  There is usually also
+   a similar 100 Hz clock.
+
+- The time stamps of the buffer headers.  These are generated by the
+   event builder nodes and may be delayed.
+
+For time-dependent calibration parameters, a precision of a second is
+much more than needed.  :-)  Or?
+
+Using the clock as stamped by the master read-out node in the spill
+on/off events has the advantage of the times being 'correct' / tightly
+coupled to the event generation itself.  Correct - if the local CPU
+clocks of the DAQ are correctly set.  The drawback is that the times
+are not available for every event.  One important corner case are
+events occurring in a file before any spill on/off event has been
+seen.  This could be solved by running through the files and create a
+look-up file, which has the times of spill on/off events recorded,
+such that they can be retrieved even without looking into the spill
+on/off events.  Interpolation is then also possible.
+
+The time-stamps from the buffer headers are always available, with
+some arbitrary (but small, generally at most one spill - 10 s) delay.
+No look-up file is be needed.  However, in the case of rewritten
+files, these time-stamps are not so easy to conserve.  Should be
+possible, though.
+
+It may be a plan to think about future-wise time-stamping all
+events...
+
+To avoid much grief, the use of UTC clearly defines the offset.
+I.e. local time is bad for internal representation.  Think summer and
+winter time changes.
+
+
+Format extensions
+-----------------
+
+PARAM(SIGNAL_ID(POS,1,1), 0.049 );     // A constant parameter, as before.
+
+// A parameter with a linear dependence:
+
+PARAM(SIGNAL_ID(POS,1,1), LIN(0.049 @ 7586866, 0.051 @ 7588866));
+
+// Entering times will be painful - allow them as 'variables':
+
+CTIME t1 = 7586866.0;                  // seconds since the Epoch
+CTIME t2 = 7 Apr 1997 16:45:16;        // perhaps useful?  (local / UTC?)
+CTIME t3 = 7 Apr 1997 16:45:16 UTC;
+CTIME t4 = 7 Apr 1997 16:45:16 local;  // what is local?
+
+// Using the times entered, and also giving quadratic dependencies:
+
+PARAM(SIGNAL_ID(POS,1,1), LIN(0.049 @ t1, 0.051 @ t2));
+PARAM(SIGNAL_ID(POS,1,2), 0.050);
+PARAM(SIGNAL_ID(POS,1,1), QUAD(0.049 @ t1, 0.051 @ t2, 0.047 @ t3));
+PARAM(SIGNAL_ID(POS,1,1), QUAD(0.049 @ t1, 0.051 @ t2, 0.047 @ MID(t1,t2)));
+PARAM(SIGNAL_ID(POS,1,1), QUAD(0.049 @ t1, 0.051 @ t2, 0.047 @ MID(t1,t2,.25)));
+
+// Giving a long set of piecewise linear segments.  to be broken up by
+// the parser?
+
+PARAM(SIGNAL_ID(POS,1,1), POLYLIN(0.049 @ t1, 0.051 @ t2, 0.052 @ t3,
+                                   0.050 @ t4));
+
+LT_RANGE(t1, t2)
+{
+   // The time variables are only valid within the block they are declared.
+
+   CTIME t7 = 7586864;
+}
+
+LT_RANGE(t1, t2)
+{
+   // When the block validity range itself is declared using times
+   // it would be useful to be able to refer to those times without
+   // redeclaring them.  (Would refer to the innermost LT_RANGE block.)
+
+   PARAM(SIGNAL_ID(POS,1,1), LIN(0.049 @ lts, 0.051 @ lte));
+   PARAM(SIGNAL_ID(POS,1,1), LIN(0.049 @ lts, 0.051 @ lte));
+
+   // Are lts / lte good names?  perhaps < and > ?:
+
+   PARAM(SIGNAL_ID(POS,1,1), LIN(0.049 @ <, 0.051 @ >));
+}
+
+
+Part II:
+========
+
+Scaling (text-file based) calibration parameter handling to cope with
+one or two orders of magnitude more parameters.
+
+Refer to the previous sections for description of stages A, B and C.
+
+
+Bottlenecks: stage A and B
+--------------------------
+
+The effort in stage C is proportional to the number of events and the
+amount of data in each event (which survived zero-suppression).  It is
+therefore not (from a calibration parameter point of view) affected by
+if a detector has 10 or 10000 channels.  Stage C is not considered
+further here.
+
+The effort in both stages A and B is proportional to the number of
+parameters, which roughly goes as the number of channels, times the
+number of time regions needed for each.
+
+
+Preprocessing
+-------------
+
+One radical way of attacking stage A is to move the calibration
+parameter parsing from the analysis program to a preprocessing stage -
+using an intermediate file.  The primary information would still and
+always be the text files - the intermediate file is regenerated
+whenever necessary, and the format considered volatile - i.e. no
+backwards compatibility maintained.
+
+Both because A will be performed less often, and as it is possible to
+make it modular (see further down), its execution time is almost a
+complete non-issue.  The intermediate data format should therefore be
+designed to benefit stage B as much as possible.
+
+
+Stage B considerations
+----------------------
+
+Every time the event reconstruction crosses a validity range
+begin/end, stage B must be re-run.  The effort is the product of two
+dimensions:
+
+a) It need to look through all parameter sets' validity ranges to find
+    applicable ranges (with parameters).
+
+b) It processes parameters for all channels.
+
+Issue a) can be fought by sorting all the validity ranges and storing
+the information in time order.  As events are processed in strictly
+increasing order, the routine knows the first point in the
+intermediate file where it had to look last time.  And as soon as it
+finds data that has not started to be valid yet, it can stop the scan.
+
+Thus, the effort for a) could be changed from O(duration of
+experiment) to O(1).  However, this assumed all validity ranges are
+equally long.  Put in another way: implemented as just one list of
+time-sorted parameters, this will be defeated by the fact that some
+validity ranges are very long, thus the start point will almost not
+move forward at all!
+
+The workaround is to keep several lists, each containing parameters
+whose validity ranges are of similar length.  All lists are active at
+the same time, but within each, the active window of the scans will
+keep sliding.  Furthermore, this also makes it reasonable to do the
+reading of the lists (i.e. the intermediate file) using mmap(), as
+only a limited amount of continuous regions in the file are needed at
+any one point.  This is actually required to match the current
+performance, as the present version of B reads data directly from data
+structures in memory.
+
+
+The effects of issue b) can be reduced by keeping a coarse list of
+which sets of parameters (e.g. specific detectors) are affected each
+time a validity range changes.  The list could internally be handled
+as a bit-mask.  For each known time (validity range border), it is
+recorded which sets of parameters may change.  B.i and B.iii then only
+clears and post-process those sets.  B.ii, which walks the parameters
+also only propagate values for parameters affecting the selected
+detectors.  As an additional optimisation, each validity-range set of
+parameters can also have a bit-mask telling what parameters are
+contained, and the contents are only traversed if any interesting
+parameters are inside.
+
+
+Stage A
+-------
+
+By using intermediate files, it also becomes possible to make the
+parsing more modular, like the usual compile & link procedure.  Each
+text file (or set of files) can be parsed individually, creating the
+equivalent of object files (e.g. in the intermediate format).  This
+also means that when only a some or a few calibration files have
+changed, only those require new parsing.  The full set of intermediate
+files are then merged together to provide the full set of parameters
+as needed by stage B.
+
+(The parsing itself, i.e. conversion of human readable textual
+information into binary data structures is relatively expensive,
+compared to e.g. the sorting & merging of the resulting structures.)
+
+Calculating which elements belongs in which list (to make the sliding
+windows work) could be done like this:
+
+For all remaining validity ranges (which are already sorted),
+calculate a length breakpoint.  (Length would be defined as time, but
+in units which increase by one for each time-point which is used by
+any validity range).  The breakpoint should be chosen to include as
+many (i.e. short) items as possible, but e.g. such that never more
+than say half the minimum sliding window length is unused.  Space is
+unused if it is occupied by parameters which are not in effect for
+some time value.  The breakpoint search could be done as a binary
+search.  All items which are longer than the breakpoint length are
+included into a list and removed from the list of remaining items.
+(As the minimum sliding window for some time ranges will have space to
+spare, attempts to include further (smaller) items can be made, such
+that they also become consumed and need not bother later lists.)  For
+the remaining items, start over again.
+
+
+First one would put all valid-for-all-times parameters in one list.
+For time-limited parameters, selection of the sizes for each list to
+use could go by determining (for remaining parameters), for the worst
+point in time, how many parameters are valid at that point.  This is
+the minimum amount of memory that will be needed to be mmapped at one
+time.  It is guaranteed to hold the biggest item that still exist.
+Alternatively, take the size as the biggest item still left (will be
+rather small, in comparison -> will get more lists).

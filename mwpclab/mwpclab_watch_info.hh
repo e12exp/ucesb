@@ -1,0 +1,14 @@
+
+#ifndef __MWPCLAB_WATCH_INFO_HH__
+#define __MWPCLAB_WATCH_INFO_HH__
+
+#define MWPCLAB_WATCH_TYPE_PHYSICS    0
+#define MWPCLAB_WATCH_TYPE_TCAL       1
+#define MWPCLAB_WATCH_TYPE_TCAL_CLOCK 2
+#define MWPCLAB_WATCH_TYPE_SCALER     3
+
+#define NUM_WATCH_TYPES 4
+
+#define WATCH_TYPE_NAMES  mwpclab_watch_types
+
+#endif//__MWPCLAB_WATCH_INFO_HH__

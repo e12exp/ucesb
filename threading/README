@@ -1,0 +1,17 @@
+Stuff for handling work division on many processors.  
+(but within the same machine)
+
+It makes little sense to copy data over the network for processing events.  
+Since then we copy the data twice.  Rather run several independent jobs on
+each machine.
+
+This code should have no scratches:
+
+--------------------------------------------
+
+(after seeing the restored car)
+Roberts: There's a scrrrratch!
+MacGyver: (blows hard) Thrrrread!
+
+--------------------------------------------
+

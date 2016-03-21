@@ -1,0 +1,36 @@
+This is an example of how to read an subevent into a buffer, such that
+one can further investigate it within the user function.
+
+The reading of the subevent is done with the external_data.{hh,cc}
+files, which can be found in the eventloop/ directory.  They can be used
+as templates for other 'external' unpacker, i.e. data formats not
+specified within the .spec files themselves.
+
+Please note: the normal way of unpacking an so complicated format that
+the .spec file cannot describe it, is to do the unpacking in the
+__unpack function of the external data format, not to copy the bytes
+there and then unpack in the user function.  This also since there are
+several user functions, which are called at different points in the
+unpack/analysis process.  And the user function is simply too late.
+
+Anyhow.  Also shown is how to declare a user data structure that gets
+parsed by the psdc, such that the members can be dumped into an ntuple.
+
+This example features an very simple (and incomplete - not full
+checking) unpacking of cros3 leading edge encoded data.  See the cros3/
+directory for the more reasonable version.
+
+
+It also features the use of a use data structure, whose data can be
+ejected into an ntuple, make sure you compile in cernlib support
+(USE_CERNLIB=1), and then try the option
+
+--ntuple=out.ntu
+
+or
+
+--ntuple=UNPACK,USER,out,ntu
+
+etc...
+
+

@@ -1,0 +1,20 @@
+/*
+
+	*******************************************************
+	Parameter file to define the cabling of the tdc modules 
+	*******************************************************
+
+
+	This parameter file contains the information necessary to interpret
+	the raw data coming from the TDC modules. 
+
+	For each plane the number of the first connected preamplifier card 
+	should be given (starting from 0 at the high momentum side).
+
+	Version : April 1999
+*/
+
+	/* first card */   x1		2
+	/* first card */   u1		0
+	/* first card */   x2		2
+	/* first card */   u2		0

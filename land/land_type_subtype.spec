@@ -1,0 +1,14 @@
+// -*- C++ -*-
+
+#define SUBEVENT_START_STOP_ACQ     35
+#define SUBEVENT_CAMAC              34
+#define SUBEVENT_CAMAC_SCALERS      3100
+#define SUBEVENT_CAMAC_CONVERTERS   3200
+#define SUBEVENT_CAMAC_POS_PILEUP   3500 // leave 2 if they were ever used...
+
+#define SUBEVENT_FASTBUS_ERROR      31
+#define SUBEVENT_FASTBUS_ERROR_INFO 3100
+
+#define SUBEVENT_FASTBUS            32
+#define SUBEVENT_FASTBUS_DATA1      3100
+#define SUBEVENT_FASTBUS_DATA3130   3130

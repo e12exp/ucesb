@@ -1,0 +1,16 @@
+
+#ifndef __TITRIS_STAMP_HH__
+#define __TITRIS_STAMP_HH__
+
+#define TITRIS_STAMP_EBID_ERROR           0x00010000
+#define TITRIS_STAMP_EBID_BRANCH_ID_MASK  0x00000f00
+#define TITRIS_STAMP_EBID_UNUSED         (0xffffffff ^ \
+					  TITRIS_STAMP_EBID_ERROR ^	\
+					  TITRIS_STAMP_EBID_BRANCH_ID_MASK)
+#define TITRIS_STAMP_LMH_TIME_MASK        0x0000ffff
+#define TITRIS_STAMP_LMH_ID_MASK          0xffff0000
+#define TITRIS_STAMP_L16_ID               0x00f70000
+#define TITRIS_STAMP_M16_ID               0x01f70000
+#define TITRIS_STAMP_H16_ID               0x02f70000
+
+#endif//__TITRIS_STAMP_HH__
