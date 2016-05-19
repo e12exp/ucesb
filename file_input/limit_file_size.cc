@@ -20,12 +20,27 @@ void limit_file_size::parse_open_first_file(const char *filename)
   if (!last_slash)
     last_slash = filename;
 
-  // Only look for a dot after the last slash
+  // Only look for a dot after the last slash; use the last dot
   const char *dot = strrchr(last_slash,'.');
 
   // If no dot, we assume dot is at the end
   if (!dot)
     dot = last_slash + strlen(last_slash);
+
+  // If we find an occurance of '.lmd', that takes precedence.
+  const char *dot_lmd = strstr(last_slash, ".lmd");
+
+  while (dot_lmd)
+    {
+      const char *next_dot_lmd = strstr(dot_lmd+1, ".lmd");
+
+      if (!next_dot_lmd)
+	break;
+      dot_lmd = next_dot_lmd;      
+    }
+
+  if (dot_lmd)
+    dot = dot_lmd;
 
   const char *digit = dot;
 

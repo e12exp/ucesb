@@ -1235,7 +1235,7 @@ void generate_structure(FILE *fid,stage_array &sa,int indent,bool infomacro)
 		   "#error Next offset 0x%x < next location 0x%x\n",
 		   offset,location);
 	  MSG("Structure error, overlapping items, "
-	      "%s has offset (0x%x) before end of previous item (0x%x).\n",
+	      "%s has offset (0x%x) before end of previous item (0x%x).",
 	      item._var_name,offset,location);
 	}
       if (offset > location)
@@ -1304,7 +1304,7 @@ void generate_structure(FILE *fid,stage_array &sa,int indent,bool infomacro)
 	       "#error Length of structure 0x%zx < next location 0x%x\n",
 	       sa._length,location);
       MSG("Structure error, overflow, "
-	  "end (0x%zx) before end of previous item (0x%x).\n",
+	  "end (0x%zx) before end of previous item (0x%x).",
 	  sa._length,location);
     }
   if (sa._length > location)
@@ -1951,7 +1951,7 @@ void request_setup_done(void *msg,uint32_t *left,int reader,int writer)
   if (reader)
     {
       if (!_config._insrc)
-	ERR_MSG("Input source not specified.\n");
+	ERR_MSG("Input source not specified.");
 
       _reader_client = ext_data_connect(_config._insrc);
 
@@ -3386,10 +3386,10 @@ request_resize_shm(ext_write_config_comm *comm,
   uint32_t magic = get_buf_uint32(&msg,left);
 
   if (magic != EXTERNAL_WRITER_MAGIC)
-    ERR_MSG("Request to resize shared memory has bad magic.\n");  
+    ERR_MSG("Request to resize shared memory has bad magic.");  
 
   if (new_len < shmc->_len)
-    ERR_MSG("Request to decrease shared memory not allowed.\n");
+    ERR_MSG("Request to decrease shared memory not allowed.");
   
   // check that the shared memory has the required size
 
@@ -3480,10 +3480,10 @@ request_resize_pipe(ext_write_config_comm *comm,
   uint32_t magic = get_buf_uint32(&msg,left);
 
   if (magic != EXTERNAL_WRITER_MAGIC)
-    ERR_MSG("Request to resize pipe has bad magic.\n");  
+    ERR_MSG("Request to resize pipe has bad magic.");
 
   if (new_len < shmc->_len)
-    ERR_MSG("Request to decrease shared memory not allowed.\n");
+    ERR_MSG("Request to decrease shared memory not allowed.");
  
   // We're simply getting a completely new pipe.  All old pointers useless.
   
@@ -4568,7 +4568,7 @@ int main(int argc,char *argv[])
     }
 
   if (_config._comms == NULL)
-    ERR_MSG("No input source specified.\n");
+    ERR_MSG("No input source specified.");
 
 #if USING_CERNLIB || USING_ROOT
   if (!_config._outfile && !_config._infile)

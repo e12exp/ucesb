@@ -39,7 +39,8 @@ forked_child::fork(const char *file,const char *const argv[],
 		   int *fd_in,
 		   int *fd_out,
 		   int fd_dest,int fd_src,
-		   int fd_keep,char *fork_pipes)
+		   int fd_keep,char *fork_pipes,
+		   bool ignore_sigint)
 {
   // We need stdout piped from the process
   // And we give him a broken stdin
@@ -129,6 +130,11 @@ forked_child::fork(const char *file,const char *const argv[],
 	nc_argv[i] = strdup(argv[i]);
       nc_argv[narg] = NULL;
 
+      // Perhaps we should have used a different process group??
+      // Would that (or this) lead to having now 'unkillable' children?
+      if (ignore_sigint)
+	signal(SIGINT, SIG_IGN);
+      
       int ret = execvp(file,nc_argv);
       /*
 		       "cpp",

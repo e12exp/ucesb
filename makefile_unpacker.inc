@@ -263,27 +263,30 @@ endif
 FILE_CURSES_CONFIG=$(shell which ncurses5-config 2> /dev/null)
 
 ifneq (,$(FILE_CURSES_CONFIG))
-CXXFLAGS     += -DUSE_CURSES=$(USE_CURSES) -I$(UCESB_BASE_DIR)/watcher \
-	$(shell $(FILE_CURSES_CONFIG) --cflags)
-CXXLIBS      += $(shell $(FILE_CURSES_CONFIG) --libs)
-USING_CURSES=1
-else 
-# Can we compile a small test program, then we are ok
-HAVE_CURSES := $(shell gcc -o /dev/null -lcurses \
-	$(UCESB_BASE_DIR)/lu_common/curses_test.c \
-	2> /dev/null && echo -DHAVE_CURSES)
-# If, then we claim explicit request.
-ifneq (,$(HAVE_CURSES))
-USE_CURSES = 1
-endif
-ifdef USE_CURSES
-CXXFLAGS     += -DUSE_CURSES=$(USE_CURSES) -I$(UCESB_BASE_DIR)/watcher
-CXXLIBS      += -lcurses
-USING_CURSES=1
-endif
+CURSES_CFLAGS = $(shell $(FILE_CURSES_CONFIG) --cflags)
+CURSES_LIBS = $(shell $(FILE_CURSES_CONFIG) --libs)
+else
+# Try with some defaults:
+CURSES_CFLAGS = 
+CURSES_LIBS = -lcurses
 endif
 
-ifdef USING_CURSES
+# And then to verify (also in case ncurses5-config was there, because
+# sometimes installations are broken (no symbol-names / .a-files)
+
+HAVE_CURSES := $(shell gcc -o /dev/null $(CURSES_CFLAGS) \
+	$(UCESB_BASE_DIR)/lu_common/curses_test.c $(CURSES_LIBS) \
+	2> /dev/null && echo -DHAVE_CURSES)
+
+# If, then we are good
+ifneq (,$(HAVE_CURSES))
+USE_CURSES = 1
+CXXFLAGS     += -DUSE_CURSES=$(USE_CURSES) -I$(UCESB_BASE_DIR)/watcher \
+	$(CURSES_CFLAGS)
+CXXLIBS      += $(CURSES_LIBS)
+endif
+
+ifdef USE_CURSES
 OBJS         += colourtext.o
 
 ifndef USE_MERGING # disabled for the time being (to be fixed...)

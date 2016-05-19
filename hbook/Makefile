@@ -8,9 +8,11 @@ ifdef BUILD_LAND02
 CXXFLAGS += -DBUILD_LAND02
 DEP_BASE_DIR=$$(HBOOK_BASE_DIR)
 DEP_BASE_DIR_ESC=$$\(HBOOK_BASE_DIR\)
+LU_COMMON_DIR=$(HBOOK_BASE_DIR)/../../lu_common
 else
 DEP_BASE_DIR=$$(UCESB_BASE_DIR)
 DEP_BASE_DIR_ESC=$$\(UCESB_BASE_DIR\)
+LU_COMMON_DIR=$(UCESB_BASE_DIR)/lu_common
 endif
 
 #####################################################################
@@ -32,14 +34,26 @@ LDFLAGS += -g
 FILE_CURSES_CONFIG=$(shell which ncurses5-config 2> /dev/null)
 
 ifneq (,$(FILE_CURSES_CONFIG))
-CXXFLAGS     += -DUSE_CURSES=$(USE_CURSES) \
-        $(shell $(FILE_CURSES_CONFIG) --cflags)
-CXXLIBS      += $(shell $(FILE_CURSES_CONFIG) --libs)
-else 
-ifdef USE_CURSES
-CXXFLAGS     += -DUSE_CURSES=$(USE_CURSES)
-CXXLIBS      += -lcurses
+CURSES_CFLAGS = $(shell $(FILE_CURSES_CONFIG) --cflags)
+CURSES_LIBS = $(shell $(FILE_CURSES_CONFIG) --libs)
+else
+# Try with some defaults:
+CURSES_CFLAGS = 
+CURSES_LIBS = -lcurses
 endif
+
+# And then to verify (also in case ncurses5-config was there, because
+# sometimes installations are broken (no symbol-names / .a-files)
+
+HAVE_CURSES := $(shell gcc -o /dev/null $(CURSES_CFLAGS) \
+	$(LU_COMMON_DIR)/curses_test.c $(CURSES_LIBS) \
+	2> /dev/null && echo -DHAVE_CURSES)
+
+# If, then we are good
+ifneq (,$(HAVE_CURSES))
+USE_CURSES = 1
+CXXFLAGS     += -DUSE_CURSES=$(USE_CURSES) $(CURSES_CFLAGS)
+CXXLIBS      += $(CURSES_LIBS)
 endif
 
 #####################################################################

@@ -82,6 +82,8 @@ lmd_output_file::lmd_output_file()
   _buf_size = 0x10000;
 
   _has_file_header = false;
+
+  _compression_level = 6;
 }
 
 
@@ -156,6 +158,22 @@ void lmd_output_file::close_file()
     throw error();
 }
 
+uint32 parse_compression_level(const char* post) {
+  char* end;
+  uint32 level = (uint32) strtol(post, &end, 10);
+
+  if (*end != 0)
+    ERROR("compression level request malformed: %s", post);
+
+  if (level > 9)
+    ERROR("compression level to large - max is 9: %s", post);
+  
+  if (level < 1)
+    ERROR("compression level to small - min is 1: %s", post);
+
+  return level;
+}
+
 uint64 parse_size_postfix(const char *post,const char *allowed,
 			  const char *error_name,bool fit32bits)
 {
@@ -213,6 +231,7 @@ void lmd_out_file_usage()
   printf ("size=N              File size limit [ki|Mi|Gi].\n");
   printf ("events=N            Event limit [k|M].\n");
   printf ("eventcut=N          Limit events / file [k|M].\n");
+  printf ("clevel=N            Compression level 1-9. Default 6.\n");
   printf ("newnum              Avoid using existing file numbers.\n");
   printf ("wp                  Write protect file.\n");
 
@@ -283,6 +302,8 @@ lmd_output_file *parse_open_lmd_file(const char *command, bool allow_selections)
 	out_file->_limit_events = (uint32) parse_size_postfix(post,"kM","Events",true);
       else if (MATCH_C_PREFIX("eventcut=",post))
 	out_file->_event_cut = (uint32) parse_size_postfix(post,"kM","Eventcut",true);
+      else if (MATCH_C_PREFIX("clevel=",post))
+	out_file->_compression_level = parse_compression_level(post);
       else if (MATCH_C_ARG("newnum"))
 	out_file->_avoid_used_number = true;
       else if (MATCH_C_ARG("wp"))
@@ -409,10 +430,14 @@ void lmd_output_file::open_file(const char* filename)
   strcpy(_cur_filename, filename);
   
   report_open_close(true);
+
+  char level[10];
+  snprintf(level, 10, "-%d", _compression_level);
   
-  const char *argv_gzip[3] = { "gzip", "-9", NULL };
-  const char *argv_bzip2[3] = { "bzip2", "-9", NULL };
-  const char *argv_xz[3] = { "xz", "-6", NULL };
+  
+  const char *argv_gzip[3] = { "gzip", level, NULL };
+  const char *argv_bzip2[3] = { "bzip2", level, NULL };
+  const char *argv_xz[3] = { "xz", level, NULL };
   const char **argv = NULL;
 
   size_t n = strlen(filename);
@@ -426,7 +451,7 @@ void lmd_output_file::open_file(const char* filename)
 
   if (argv)
     {
-      _compressor.fork(argv[0],argv,NULL,&_fd_write,_fd_handle);
+      _compressor.fork(argv[0],argv,NULL,&_fd_write,_fd_handle,-1,-1,NULL,true);
       INFO(0,"Piping output through compressor '%s %s'",argv[0],argv[1]);
     }
   else

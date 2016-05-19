@@ -2,6 +2,7 @@
 FLEX_PATCH_PIPELINE=\
 	sed -e "s/typedef unsigned char YY_CHAR/typedef int YY_CHAR/" \
 	  -e "s/int yyleng;/size_t yyleng;/" \
+	  -e "s/int yyget_leng/size_t yyget_leng/" \
 	  -e "s/int yyl;/size_t yyl;/" \
 	  -e "s/int yy_n_chars;/size_t yy_n_chars;/" \
 	  -e "s/int num_to_alloc;/size_t num_to_alloc;/" \

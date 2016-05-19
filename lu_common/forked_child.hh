@@ -38,7 +38,8 @@ public:
   void fork(const char *file,const char *const argv[],
 	    int *fd_in,int *fd_out,
 	    int fd_dest = -1,int fd_src = -1,
-	    int fd_keep = -1,char *fork_pipes = NULL);
+	    int fd_keep = -1,char *fork_pipes = NULL,
+	    bool ignore_sigint = false);
   void wait(bool terminate_child,
 	    int *exit_status = NULL);
   void close_fds();
