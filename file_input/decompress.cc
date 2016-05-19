@@ -58,7 +58,7 @@ void decompressor::start(int *fd_in,
   //for (int i = 0; argv[i]; i++)
   //  printf ("%d: <%s>\n",i,argv[i]);
     
-  _fork.fork(method,argv,fd_in,fd_out,-1,fd_src);
+  _fork.fork(method,argv,fd_in,fd_out,-1,fd_src,-1,NULL,true);
   /* printf ("_fork._fd_in:%d\n",_fork._fd_in); */
   _fork._fd_in = -1; // caller will take care of closing the file!
 

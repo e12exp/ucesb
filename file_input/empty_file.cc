@@ -64,6 +64,7 @@ void usage(char *cmdname)
   printf ("  --caen-v775=N     Write CAEN V775 subevent.\n");
   printf ("  --caen-v1290=N    Write CAEN V1290 subevent.\n");
   printf ("  --empty-buffers   No events.\n");
+  printf ("  --rate=N          At most, output N events/s.\n");
 
   printf ("  --lmd             Write LMD format data.\n");
   printf ("  --ebye            Write EBYE format data.\n");
@@ -97,6 +98,8 @@ struct config
 
   uint64 _max_buffers;
   uint64 _max_events;
+
+  int  _max_rate;
 
   uint _format;
 };
@@ -158,6 +161,9 @@ int main(int argc,char *argv[])
       }	      
       else if (MATCH_PREFIX("--events=",post)) {
 	_conf._max_events = atol(post);
+      }	      
+      else if (MATCH_PREFIX("--rate=",post)) {
+	_conf._max_rate = atol(post);
       }	      
       else if (MATCH_ARG("--empty-buffers")) {
 	_conf._empty_buffers = 1;
@@ -278,6 +284,39 @@ void write_buffer()
   //fprintf (stderr,"Wrote buffer...\n");
 }
 
+void sleep_timeslot(struct timeval *timeslot_start)
+{
+  struct timeval now;
+  
+  gettimeofday(&now, NULL);
+
+  timeslot_start->tv_sec++; /* Time of next timeslot start. */
+
+  /* If we have already used more than a second, then just
+   * say that the next timeslot starts now.
+   */
+
+  struct timeval remain;
+
+  remain.tv_sec  = timeslot_start->tv_sec  - now.tv_sec;
+  remain.tv_usec = timeslot_start->tv_usec - now.tv_usec;
+
+  if (remain.tv_usec < 0)
+    {
+      remain.tv_sec--;
+      remain.tv_usec += 1000000;
+    }
+
+  if (remain.tv_sec < 0 ||
+      remain.tv_sec > 1 /* should not be, just reset */)
+    {
+      *timeslot_start = now;
+      return;
+    }
+  
+  usleep(remain.tv_usec);
+}
+
 char *create_titris_stamp(char *data_write,
 			  uint64_t *rstate_badtitris)
 {
@@ -360,6 +399,9 @@ void write_data_lmd()
   uint64_t rstate_badtitris = 4;
   uint64_t rstate_badwr = 5;
   uint64_t rstate_sim_caen = 6;
+
+  uint64_t timeslot_nev = 0;
+  struct timeval timeslot_start;
   
   // round the buffer size up to next multiple of 1024 bytes.
   // default size is 32k
@@ -370,6 +412,8 @@ void write_data_lmd()
   _conf._buffer_size = (_conf._buffer_size + 0x3ff) & ~0x3ff;
 
   alloc_buffer();
+
+  gettimeofday(&timeslot_start,NULL);  
 
   for (uint64 nb = 0, nev = 0; (nb < _conf._max_buffers &&
 		       nev < _conf._max_events); nb++)
@@ -428,6 +472,7 @@ void write_data_lmd()
 		 nev < _conf._max_events)
 	    {
 	      nev++;
+	      timeslot_nev++;
 
 	      lmd_event_10_1_host *ev = (lmd_event_10_1_host *) data_end;
 
@@ -585,6 +630,13 @@ void write_data_lmd()
 
 		  min_subevent_total_size = sizeof(lmd_subevent_10_1_host);
 		}
+
+	      if (_conf._max_rate &&
+		  timeslot_nev >= _conf._max_rate)
+		{
+		  timeslot_nev = 0;
+		  break;
+		}
 	    }
 	}
 
@@ -594,6 +646,9 @@ void write_data_lmd()
 	bufhe->i_used = bufhe->l_free[2];
 
       write_buffer();
+
+      if (!timeslot_nev)
+	sleep_timeslot(&timeslot_start);
     }
 }
 

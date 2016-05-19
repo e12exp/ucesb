@@ -211,7 +211,7 @@ void sigint_handler(int sig)
 
   if (_got_sigint > 1)
     {
-      printf ("Get many SIGINT requests, next will go through");
+      printf ("Got many SIGINT requests, next will go through");
       signal(SIGINT,SIG_DFL);
     }
   else
@@ -927,7 +927,7 @@ int main(int argc, char **argv)
     uint64_t   total_errors = 0;
     uint64_t   total_multi = 0;
 
-    uint64_t   show_events = 100;
+    uint64_t   show_events = 1;
     uint64_t   next_show = show_events;
     uint64_t   last_show = 0;
     uint64_t   last_show_multi = 0;
@@ -937,6 +937,7 @@ int main(int argc, char **argv)
     timeval last_show_time;
 
     gettimeofday(&last_show_time,NULL);
+    last_show_time.tv_sec--;
 
     try {
    
@@ -1575,7 +1576,10 @@ downscale_event:
 			
 			if (elapsed > 0.2)
 			  {
-			    last_show_time = now;
+			    /* Do not update the time for the first events,
+			     * to quickly slow progress >= 1. */
+			    if (events >= 100)
+			      last_show_time = now;
 
 			    double event_rate =
 			      (double) (events-last_show)*0.001/elapsed;
@@ -1662,7 +1666,8 @@ downscale_event:
 			  }
 		      }
 			    
-		    if (events >= show_events * 2000)
+		    if (events >=
+			show_events * (show_events <= 200 ? 20 : 2000))
 		      show_events *= 10;
 		    
 		    next_show += show_events;

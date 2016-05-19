@@ -194,6 +194,7 @@ public:
 public:
   // When compressing the output on the fly
   forked_child       _compressor;
+  uint32             _compression_level;
 
 };
 
