@@ -21,3 +21,7 @@ psdc/generated/
 psdc/psdc
 ucesb/generated/
 ucesb/ucesb
+*_dict.cc
+*_dict.h
+*.so
+hbook/root_writer
