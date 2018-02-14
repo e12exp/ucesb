@@ -380,7 +380,7 @@ OBJS         +=
 # make them fatal by default.  But that will come!
 
 ifeq (,$(FORCE_PTHREAD)) # not if we forced
-CXXFLAGS += -Werror # -Wshadow -Wcast-qual
+CXXFLAGS +=  # -Wshadow -Wcast-qual
 endif
 
 endif # USE_PTHREAD
