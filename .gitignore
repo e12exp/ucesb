@@ -25,3 +25,4 @@ ucesb/ucesb
 *_dict.h
 *.so
 hbook/root_writer
+land/mc_gen
