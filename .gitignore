@@ -17,6 +17,7 @@ ext_writer_h101
 file_input/empty_file
 gen/
 hbook/struct_writer
+hbook/hbook_writer
 psdc/generated/
 psdc/psdc
 ucesb/generated/
@@ -26,3 +27,7 @@ ucesb/ucesb
 *.so
 hbook/root_writer
 land/mc_gen
+.nfs*
+vgcore*
+core
+.gdb_history

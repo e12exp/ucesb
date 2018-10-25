@@ -41,11 +41,11 @@ else
   CXXFLAGS += -Wno-comment -Wno-macro-redefined -Wno-sign-conversion -Wno-float-conversion -Wno-mismatched-tags
 endif
 
-CXXFLAGS += -g
+CXXFLAGS += -g --std=c++14
 OPTFLAGS += #-DNDEBUG
 OPTFLAGS += #-fmudflapth # -fstack-protector
 
-OPTFLAGS += -O3
+OPTFLAGS += -O0
 
 # For supporting large files:
 CXXFLAGS += -D_LARGEFILE_SOURCE -D_FILE_OFFSET_BITS=64
