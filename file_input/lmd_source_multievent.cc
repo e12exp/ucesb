@@ -139,7 +139,7 @@ lmd_event *lmd_source_multievent::get_event()
       // Something went wrong while loading data
     // -> Break and return input event
     _TRACE("=> return &_file_event (input event)\n");
-    fprintf("error, returned input event!\n");
+    fprintf(stderr, "error, returned input event!\n");
     return &_file_event;
   }
   
@@ -460,12 +460,14 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()
         event_entry->timestamp = (*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32)) -  ts_skew;
 	uint64_t fbxts=event_entry->timestamp;
 	if ((int64_t)fbxts<(int64_t)febex_ts_last-50)
-	  fprintf(stderr, "found a febex ts %ld fbx ticks in the previous readout slice!\n", febex_ts_last-fbxts);
+	  fprintf(stderr, "found a febex ts %ld fbx ticks in the previous readout slice @ %01d.%02d.%0d2\n", febex_ts_last-fbxts,
+		  sfp_id, module_id, channel_id);
     
 	if ((int64_t)fbxts>(int64_t)febex_ts_current+100)
-	  fprintf(stderr, "found a febex ts %ld fbx ticks in the next readout slice!\n", -febex_ts_current+fbxts);
+	  fprintf(stderr, "found a febex ts %ld fbx ticks in the next readout slice! @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,
+		  sfp_id, module_id, channel_id);
 
-	
+	//fprintf(stderr, "found a febex ts %ld  @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,sfp_id, module_id, channel_id);
         _TRACE("skew: %ld", ts_skew);
 	//       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
 
