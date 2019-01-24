@@ -123,8 +123,7 @@ public:
   {
     static bool warned=0;
     if (!warned++ && !wr_ts_current)
-      fprintf(stderr, "febex2wrts: No WRTS data to base timestamp conversion on. \n"
-	      "Making up random WRTS timestamps, which will likely poison any ");
+      fprintf(stderr, "febex2wrts: WRTS is zero. This should never happen.\n");
     
     return (int64_t)wr_ts_current+(int64_t)(((int64_t)fbxts-(int64_t)febex_ts_current)*delta_wrts/delta_febex);
   }
@@ -145,8 +144,21 @@ public:
     wr_ts_last=wr_ts_current;
     febex_ts_current=fbxts;
     wr_ts_current=wrts;
-
-    if (!wr_ts_last) 
+    static uint16_t warned=0;
+    if (!wrts)
+      {
+	wr_ts_current=50*fbxts/3;
+	if (!warned++)
+	  fprintf(stdout,
+		  "**************************************************\n"
+		  "update_ts_conv: Either epoch is currently a multiple of 2^64 ns\n"
+		  " (happy anniversary)\n"
+		  " or your febex data did not include WRTS data (e.g. from PEXARIA). \n"
+		  "I will fake a WRTS like timestamp based on the febex ts.\n"
+		  "THIS WILL BE UNMERGEABLE WITH ANYTHING ELSE.\n"
+		  "*************************************************\n\n");
+      }
+    if (1)//(!wr_ts_last) 
       {
 	// one point interpolation using the standard febex ts rate of 50/3 ns
 	delta_febex =  3;
@@ -156,6 +168,8 @@ public:
       {
 	delta_febex =  febex_ts_current - febex_ts_last;
 	delta_wrts  =  wr_ts_current    - wr_ts_last;
+	assert(delta_febex>0);
+	assert(delta_wrts>0);
       }
     
     //printf("delta WRTS: %ld    delta FebexTS: %ld\n",
