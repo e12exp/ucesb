@@ -216,10 +216,10 @@ lmd_event *lmd_source_multievent::get_event()
 		 );*/
 	    
 	    //printf("   fbx: currentRO - first = %f s\n", 16.6666e-9*((int64_t)febex_ts_current-first_ts));
-	    printf("   fbx: first - previous = %f s\n",  16.6666e-9*((int64_t)first_ts-first_ts_prev));
-	    printf("  wrts: first - previous =  %f s\n", 1e-9* ((int64_t)whirr_prev - whirr));
-	    //printf("   fbx: first -  previous = %f s\n",  16.6666e-9*((int64_t)first_ts-first_ts_prev));
-	    printf("    %f\n", (double)delta_wrts/delta_febex);
+	    printf("   fbx: first - previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
+	    printf("  wrts: first - previous =  %f s\n", 1e-9*(double)((int64_t)whirr_prev - whirr));
+	    //printf("   fbx: first -  previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
+	    printf("    %f\n", (double)delta_wrts/(double)delta_febex);
 	  }
 	
 	whirr_prev = whirr;
@@ -476,7 +476,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 		      module_id, ts_skew,
 		      _file_event._header._info.i_trigger);
             }
-	    if (abs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
+	    if (labs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
 	      {
 		fprintf(stderr, "[ERROR] Large change in timestamp skew for processor %d, SFP %d, module %d: %ld -> %ld (Trigger %d).\n",
 			proc_id, sfp_id,
@@ -536,16 +536,18 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	uint64_t fbxts=event_entry->timestamp;
 	if ((int64_t)fbxts<(int64_t)febex_ts_last-50 )
 	  {
-	    fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d)\n", febex_ts_last-fbxts, (febex_ts_last-fbxts)*16.666666666e-9,
+	    fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d)\n", febex_ts_last-fbxts,
+		    (double)(febex_ts_last-fbxts)*16.666666666e-9,
 		    sfp_id, module_id, (int)channel_id, hit_no);
 	    bankswitch_issue[sfp_id][module_id]=1;
 	    badmodules[sfp_id][module_id]++;
 	  }
 	else if ((int64_t)fbxts>(int64_t)febex_ts_current+200 )
 	  {
-	    fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d)\n", -febex_ts_current+fbxts, (-febex_ts_current+fbxts)*16.666666e-9,
+	    fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d)\n", -febex_ts_current+fbxts,
+		    (double)(-febex_ts_current+fbxts)*16.666666e-9,
 		    sfp_id, module_id, (int)channel_id, hit_no);
-	    fprintf(stderr, "abs ts is %d, readout is %d\n", fbxts, febex_ts_current);
+	    fprintf(stderr, "abs ts is %ld, readout is %ld\n", fbxts, febex_ts_current);
 	    badmodules[sfp_id][module_id]++;
 	  }
 	else
@@ -554,9 +556,9 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	    //	    fprintf(stderr, "%d  ", (int)channel_id);
 	  }
 
-	//fprintf(stderr, "found a febex ts %ld  @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,sfp_id, module_id, channel_id);
+	//fprintf(stderr, "found a febex ts %ulld  @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,sfp_id, module_id, channel_id);
         _TRACE("skew: %ld", ts_skew);
-	//       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
+	//       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ulld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
 
 	event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
         _TRACE("    Size: %d\n", event_entry->size);
