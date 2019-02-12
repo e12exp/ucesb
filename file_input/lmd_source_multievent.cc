@@ -465,10 +465,15 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
             _TRACE("Current base timestamp: 0x%08lx\n", ts_normalize);
 	    update_ts_conv(wr_latest, ts_normalize);
           }
+	  else if (labs(ts_header-febex_ts_last)<1000)
+	  {
+	    bankswitch_issue[sfp_id][module_id]=1;
+	    ts_skew=0xdeadbeefdeadbeef;
+	  }
           else
           {
             ts_skew = ts_header - ts_normalize;
-
+	    
             if((ts_skew < -TS_SKEW_WARN || ts_skew > TS_SKEW_WARN)  && ! (buguser%0x40))
             {
               fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %d: %ld (Trigger %d)\n",
@@ -518,61 +523,61 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	    fprintf(stderr, "[WARNING] Invalid event header: 0x%08x\n", *pl_data);
 	    break;
 	  }
-
-        event_entry = new (*alloc) multievent_entry(alloc);
-        event_entry->_header = se->_header;
-        event_entry->channel_id = (uint8_t)channel_id;
-        event_entry->module_id = (uint8_t)module_id;
-        event_entry->sfp_id = (uint8_t)sfp_id;
-        event_entry->proc_id = proc_id;
-        event_entry->timestamp = (*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32)) -  ts_skew;
-	
-	if (!found_special_ch[sfp_id][module_id])
-	  {
-	    fprintf(stderr, "no special channel for %d.%d.*\n", sfp_id, module_id);
-	    found_special_ch[sfp_id][module_id]=1; //only bug user once
-	  }
+	if (!bankswitch_issue[sfp_id][module_id])
+	{
+	  event_entry = new (*alloc) multievent_entry(alloc);
+	  event_entry->_header = se->_header;
+	  event_entry->channel_id = (uint8_t)channel_id;
+	  event_entry->module_id = (uint8_t)module_id;
+	  event_entry->sfp_id = (uint8_t)sfp_id;
+	  event_entry->proc_id = proc_id;
+	  event_entry->timestamp = (*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32)) -  ts_skew;
+	  
+	  if (!found_special_ch[sfp_id][module_id])
+	    {
+	      fprintf(stderr, "no special channel for %d.%d.*\n", sfp_id, module_id);
+	      found_special_ch[sfp_id][module_id]=1; //only bug user once
+	    }
 	      
-	uint64_t fbxts=event_entry->timestamp;
-	if ((int64_t)fbxts<(int64_t)febex_ts_last-50 )
-	  {
-	    fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d)\n", febex_ts_last-fbxts,
-		    (double)(febex_ts_last-fbxts)*16.666666666e-9,
-		    sfp_id, module_id, (int)channel_id, hit_no);
-	    bankswitch_issue[sfp_id][module_id]=1;
-	    badmodules[sfp_id][module_id]++;
-	  }
-	else if ((int64_t)fbxts>(int64_t)febex_ts_current+200 )
-	  {
-	    fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d)\n", -febex_ts_current+fbxts,
-		    (double)(-febex_ts_current+fbxts)*16.666666e-9,
-		    sfp_id, module_id, (int)channel_id, hit_no);
-	    fprintf(stderr, "abs ts is %ld, readout is %ld\n", fbxts, febex_ts_current);
-	    badmodules[sfp_id][module_id]++;
-	  }
-	else
-	  {
-	    goodmodules[sfp_id][module_id]++;
-	    //	    fprintf(stderr, "%d  ", (int)channel_id);
-	  }
+	  uint64_t fbxts=event_entry->timestamp;
+	  if ((int64_t)fbxts<(int64_t)febex_ts_last-50 )
+	    {
+	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d)\n", febex_ts_last-fbxts,
+		      (double)(febex_ts_last-fbxts)*16.666666666e-9,
+		      sfp_id, module_id, (int)channel_id, hit_no);
+	      badmodules[sfp_id][module_id]++;
+	    }
+	  else if ((int64_t)fbxts>(int64_t)febex_ts_current+200 )
+	    {
+	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d)\n", -febex_ts_current+fbxts,
+		      (double)(-febex_ts_current+fbxts)*16.666666e-9,
+		      sfp_id, module_id, (int)channel_id, hit_no);
+	      fprintf(stderr, "abs ts is %ld, readout is %ld\n", fbxts, febex_ts_current);
+	      badmodules[sfp_id][module_id]++;
+	    }
+	  else
+	    {
+	      goodmodules[sfp_id][module_id]++;
+	      //	    fprintf(stderr, "%d  ", (int)channel_id);
+	    }
+	  
+	  //fprintf(stderr, "found a febex ts %ulld  @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,sfp_id, module_id, channel_id);
+	  _TRACE("skew: %ld", ts_skew);
+	  //       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ulld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
+	  
+	  event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
+	  _TRACE("    Size: %d\n", event_entry->size);
+	  event_entry->data = (uint32_t*)alloc->allocate(event_entry->size);
 
-	//fprintf(stderr, "found a febex ts %ulld  @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,sfp_id, module_id, channel_id);
-        _TRACE("skew: %ld", ts_skew);
-	//       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ulld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
-
-	event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
-        _TRACE("    Size: %d\n", event_entry->size);
-        event_entry->data = (uint32_t*)alloc->allocate(event_entry->size);
-
-        memcpy(event_entry->data, pl_bufhead, 8);
-        memcpy(event_entry->data + 2, pl_data, event_entry->size - 8);
+	  memcpy(event_entry->data, pl_bufhead, 8);
+	  memcpy(event_entry->data + 2, pl_data, event_entry->size - 8);
 #define UPDATE_TS 1
 #if UPDATE_TS
-	   event_entry->data[5]=(uint32_t)((event_entry->timestamp)>>32);
-	   event_entry->data[4]=(uint32_t)(event_entry->timestamp);
+	  event_entry->data[5]=(uint32_t)((event_entry->timestamp)>>32);
+	  event_entry->data[4]=(uint32_t)(event_entry->timestamp);
 #endif
-
-        hit_no++;
+	  hit_no++;
+	} // !bankswitch_issue
 	   
         // Adjust size of GOSIP buffer header
         *(event_entry->data + 1) = event_entry->size - 8;
