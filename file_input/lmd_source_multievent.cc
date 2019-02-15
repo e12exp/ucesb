@@ -13,7 +13,7 @@
 // Time calibration trigger type
 #define T_TCAL 1
 
-#define TS_SKEW_WARN 1
+#define TS_SKEW_WARN 4
 
 #define DT (_conf._eventbuilder_ts)
 
@@ -127,7 +127,7 @@ lmd_event *lmd_source_multievent::get_event()
 
     evnt = next_singleevent();
   }
-  while(evnt != NULL && evnt->timestamp >= first_ts && evnt->timestamp - first_ts <= DT);
+  while(evnt != NULL && evnt->timestamp >= first_ts && evnt->timestamp - first_ts <= DT && DT);
   // ^ -- end of do while loop.  event building happening in there. 
   // events_curevent is the container holding the coinciding events.
   
@@ -220,6 +220,9 @@ lmd_event *lmd_source_multievent::get_event()
 	    printf("  wrts: first - previous =  %f s\n", 1e-9*(double)((int64_t)whirr_prev - whirr));
 	    //printf("   fbx: first -  previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
 	    printf("    %f\n", (double)delta_wrts/(double)delta_febex);
+	    printf("non-monotonic WRTS are fatal.");
+	    exit(-1);
+	    
 	  }
 	
 	whirr_prev = whirr;
@@ -483,10 +486,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
             }
 	    if (labs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
 	      {
-		fprintf(stderr, "[ERROR] Large change in timestamp skew for processor %d, SFP %d, module %d: %ld -> %ld (Trigger %d).\n",
+		fprintf(stderr, "[ERROR] Large change in timestamp skew for processor %d, SFP %d, module %d: %ld -> %ld (Trigger %d). Events ignored.\n",
 			proc_id, sfp_id,
 			module_id, proc_ts_skew[20*sfp_id + module_id], ts_skew,
 			_file_event._header._info.i_trigger);
+		bankswitch_issue[sfp_id][module_id]=2;
 	      }
           } 
           proc_ts_skew[20*sfp_id + module_id] = ts_skew;
@@ -577,12 +581,12 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  event_entry->data[4]=(uint32_t)(event_entry->timestamp);
 #endif
 	  hit_no++;
+	  // Adjust size of GOSIP buffer header
+	  *(event_entry->data + 1) = event_entry->size - 8;
+	  
+	  events_read.push_back(event_entry);
 	} // !bankswitch_issue
 	   
-        // Adjust size of GOSIP buffer header
-        *(event_entry->data + 1) = event_entry->size - 8;
-
-        events_read.push_back(event_entry);
         pl_data += (event_entry->size - 8)/4;
       }
     }
@@ -591,7 +595,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   for (int sfp=0; sfp<4; sfp++)
     for (int m=0; m<20; m++)
       if (bankswitch_issue[sfp][m])
-	fprintf(stderr, "BANKSWITCH ISSUE for %d.%02d.*\n", sfp, m);	
+	fprintf(stderr, "%s for %d.%02d.*\n", (bankswitch_issue[sfp][m]==1)?"BANKSWITCH ISSUE":"TS JUMP", sfp, m);	
       else if (badmodules[sfp][m])
 	fprintf(stderr, "summary for %02d.%02d: %03d good, %03d bad\n", (int)sfp,(int)m, (int)goodmodules[sfp][m], (int)badmodules[sfp][m]);
   
