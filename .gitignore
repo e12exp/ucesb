@@ -31,3 +31,4 @@ land/mc_gen
 vgcore*
 core
 .gdb_history
+*.pcm
