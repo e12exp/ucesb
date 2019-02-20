@@ -13,6 +13,8 @@ struct lmd_event_multievent;
 #include "lmd_input.hh"
 #include "thread_buffer.hh"
 
+#include <math.h>
+
 #define _ENABLE_TRACE 0
 #if _ENABLE_TRACE
 #define _TRACE(...) fprintf(stderr, __VA_ARGS__)
@@ -124,8 +126,8 @@ public:
     static bool warned=0;
     if (!warned++ && !wr_ts_current)
       fprintf(stderr, "febex2wrts: WRTS is zero. This should never happen.\n");
-    
-    return (int64_t)wr_ts_current+(int64_t)(((int64_t)fbxts-(int64_t)febex_ts_current)*delta_wrts/delta_febex);
+    double m=double(delta_wrts)/double(delta_febex);
+    return (int64_t)wr_ts_current+(int64_t)(double((int64_t)fbxts-(int64_t)febex_ts_current)*m);
   }
 
   void init_ts_conv()
@@ -158,7 +160,7 @@ public:
 		  "THIS WILL BE UNMERGEABLE WITH ANYTHING ELSE.\n"
 		  "*************************************************\n\n");
       }
-    if (1)//(!wr_ts_last) 
+    if (!wr_ts_last || int64_t(febex_ts_current) - int64_t(febex_ts_last) <= 0) 
       {
 	// one point interpolation using the standard febex ts rate of 50/3 ns
 	delta_febex =  3;
@@ -171,7 +173,16 @@ public:
 	assert(delta_febex>0);
 	assert(delta_wrts>0);
       }
-    
+    double m = double(delta_wrts)/double(delta_febex);
+    static double num_m=0;
+    static double sum_m=0;
+    static double ssum_m=0;
+    num_m++;
+    sum_m += m;
+    ssum_m += m*m;
+    double mean_m=sum_m/num_m;
+    //double sigma_m=sqrt(ssum_m/num_m-mean_m*mean_m);
+    //printf("m=%f (mean %f, sigma %f, rel=%e)\n", m, mean_m, sigma_m, sigma_m/mean_m);
     //printf("delta WRTS: %ld    delta FebexTS: %ld\n",
     //	   delta_wrts, delta_febex);
   }

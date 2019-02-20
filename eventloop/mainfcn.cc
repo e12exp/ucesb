@@ -1555,11 +1555,11 @@ downscale_event:
 #endif
 #endif
 	      {
-		if (events >= next_show)
+		timeval now;
+		
+		gettimeofday(&now,NULL);
+		if (now.tv_sec>last_show_time.tv_sec)
 		  {
-		    timeval now;
-		    
-		    gettimeofday(&now,NULL);
 
 		    _ti_info.update();
 
@@ -1669,7 +1669,8 @@ downscale_event:
 		    if (events >=
 			show_events * (show_events <= 200 ? 20 : 2000))
 		      show_events *= 10;
-		    
+
+		    show_events=999;
 		    next_show += show_events;
 		  }
 	      }

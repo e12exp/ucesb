@@ -201,9 +201,18 @@ lmd_event *lmd_source_multievent::get_event()
 	  {
 	    printf("non-monotonic fbx ts!\n");
 	  }
+	
 	if (whirr < whirr_prev)
 	  {
-	    printf("non-monotonic WRTS! (ts conversion difference %ld)\n", whirr_prev - febex2wrts(first_ts_prev));
+
+	    if (whirr +50 >= whirr_prev)
+	      {
+		printf("slightly non-monotonic WRTS, cheating.\n");
+		whirr=whirr_prev;
+	      }
+	    else
+	      {
+		printf("non-monotonic WRTS! (ts conversion difference %ld)\n", whirr_prev - febex2wrts(first_ts_prev));
 	    /*   printf("wr=%08x%08x..%08x%08x fbx=%08x%08x..%08x%08x, current=%08x%08x -> %08x%08x  prev=%08x%08x -> %08x%08x\n",
 		 wr_ts_last >> 32, 0xffffffff & wr_ts_last,
 		 wr_ts_current >> 32, 0xffffffff & wr_ts_current,
@@ -216,13 +225,13 @@ lmd_event *lmd_source_multievent::get_event()
 		 );*/
 	    
 	    //printf("   fbx: currentRO - first = %f s\n", 16.6666e-9*((int64_t)febex_ts_current-first_ts));
-	    printf("   fbx: first - previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
-	    printf("  wrts: first - previous =  %f s\n", 1e-9*(double)((int64_t)whirr_prev - whirr));
-	    //printf("   fbx: first -  previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
-	    printf("    %f\n", (double)delta_wrts/(double)delta_febex);
-	    printf("non-monotonic WRTS are fatal.");
-	    exit(-1);
-	    
+		printf("   fbx: first - previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
+		printf("  wrts: first - previous =  %f s\n", 1e-9*(double)((int64_t)whirr_prev - whirr));
+		//printf("   fbx: first -  previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
+		printf("    %f\n", (double)delta_wrts/(double)delta_febex);
+		printf("non-monotonic WRTS are fatal.");
+		exit(-1);
+	      }
 	  }
 	
 	whirr_prev = whirr;
