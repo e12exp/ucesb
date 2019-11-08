@@ -426,7 +426,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       {
 	if (sfp_id!=last_sfp)
 	  {
-	    if (sfp_id != (last_sfp+1)%0x100)
+	    if (sfp_id < last_sfp)
 	      {
 		fprintf(stderr, "SFP ids of event are non-monotonic (last %d, now %d)\n", last_sfp, sfp_id);
 	      }
