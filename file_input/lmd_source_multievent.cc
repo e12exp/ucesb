@@ -6,6 +6,8 @@
 #include "config.hh"
 #include <inttypes.h>
 
+#include <time.h>
+
 #define SUBEVT_TYPE 100
 #define SUBEVT_SUBTYPE 10000
 //#define SUBEVT_PROCID 2
@@ -20,6 +22,10 @@
 //#define WRTS_SIZE 0
 #define WRTS_SIZE (uint32_t)sizeof(wrts_header)
 // someone thought it a good idea to use uint32 where xe ought to have used size_t.
+
+#define BUGUSER 0x10 // debug/soft error suppresion factor
+
+static time_t starttime=time(nullptr);
 
 lmd_event *lmd_source_multievent::get_event()
 {
@@ -400,6 +406,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
     int last_sfp=-1;
     int last_mod=-1;
     int last_ch=0xfe;
+    
     for(pl_data = pl_start; pl_data < pl_end; )
     {
       // Skip DMA alignment words
@@ -486,12 +493,14 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
           {
             ts_skew = ts_header - ts_normalize;
 	    
-            if((ts_skew < -TS_SKEW_WARN || ts_skew > TS_SKEW_WARN)  && ! (buguser%0x40))
+            if((ts_skew < -TS_SKEW_WARN || ts_skew > TS_SKEW_WARN)  && ! (buguser%BUGUSER))
             {
-              fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %d: %ld (Trigger %d)\n",
+              fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %d: %ld (Trigger %d), drift rate: %e\n",
 		      proc_id, sfp_id,
 		      module_id, ts_skew,
-		      _file_event._header._info.i_trigger);
+		      _file_event._header._info.i_trigger,
+		      ts_skew/20e6/(time(nullptr)-starttime)
+		      );
             }
 	    if (labs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
 	      {
