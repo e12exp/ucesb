@@ -52,37 +52,10 @@ lmd_event *lmd_source_multievent::get_event()
 
   multievent_entry *evnt;
 
-  
-  if(events_curevent.empty())
-  {
-    // No left overs from last buffer
-    evnt = next_singleevent();
-  }
-  else
-  {
-    /*    // Left overs from last buffer available
-    _TRACE("  %ld events left over\n", events_curevent.size());
-    printf("foooo\n");
-    evnt = events_curevent.front();
-    for(unsigned int i = 1; i < events_curevent.size(); i++)
-    {
-      total_size += events_curevent[i]->size;
-
-      if(total_proc_size.count(events_curevent[i]->proc_id) == 0)
-      {
-        total_proc_size[events_curevent[i]->proc_id] = events_curevent[i]->size;
-        proc_header[events_curevent[i]->proc_id] = events_curevent[i];
-      }
-      else
-      {
-        total_proc_size[events_curevent[i]->proc_id] += events_curevent[i]->size;
-      }
-    }
-    _TRACE("  -> Total size: %d\n", total_size);
-    */
-    assert(0);
-  }
-  
+  assert(events_curevent.empty());
+  // No left overs from last buffer
+  evnt = next_singleevent();
+ 
   if(!evnt && input_status == eof)
   {
     _TRACE("return NULL (evnt = NULL, eof)\n");
@@ -94,30 +67,17 @@ lmd_event *lmd_source_multievent::get_event()
     return &_file_event;
   }
 
-  first_ts = evnt->timestamp;
+  first_ts = evnt->wrts;
 
   //printf("before %08x:%08x %08x:%08x\n", first_ts >> 32, 0xffffffff&first_ts, febex_ts_current >> 32, 0xffffffff&febex_ts_current);
-  if (first_ts+200 > febex_ts_current)
-  {
-    load_events();
-    assert(events_curevent.size()==0);
 
-    //update first event
-    evnt = next_singleevent();
-    first_ts = evnt->timestamp;
-
-    //memset(&_file_event, 0, sizeof(_file_event));
-    //printf("after  %08x:%08x %08x:%08x\n", first_ts >> 32, 0xffffffff&first_ts, febex_ts_current >> 32, 0xffffffff&febex_ts_current);
-    return  get_event(); // wait for the next readout before processing
-  }
   
   do
   {
-    if(evnt == events_available.front())
-    {
-      events_available.pop_front();
-      events_curevent.push_back(evnt);
-    }
+    assert(evnt == events_available.front());
+    assert(evnt->wrts >= first_ts);
+    events_available.pop_front();
+    events_curevent.push_back(evnt);
     total_size += evnt->size;
     _TRACE(" Total size: %d\n", total_size);
 
@@ -133,7 +93,7 @@ lmd_event *lmd_source_multievent::get_event()
 
     evnt = next_singleevent();
   }
-  while(evnt != NULL && evnt->timestamp >= first_ts && evnt->timestamp - first_ts <= DT && DT);
+  while(evnt != NULL && evnt->wrts - first_ts <= DT && DT);
   // ^ -- end of do while loop.  event building happening in there. 
   // events_curevent is the container holding the coinciding events.
   
@@ -198,51 +158,14 @@ lmd_event *lmd_source_multievent::get_event()
     if (!total_proc_size[evnt->proc_id])
       {
 	// add WRTS header for each proc
-	wrts_header wr(febex2wrts(first_ts));
+	uint64_t whirr = first_ts;
+	wrts_header wr(whirr);
 	static uint64_t whirr_prev = 0;
-	static uint64_t first_ts_prev = 0;
-	uint64_t whirr = febex2wrts(first_ts);
 	//printf("fbx %lx -> wrts %lx\n", first_ts, whirr);
-	if (first_ts < first_ts_prev)
-	  {
-	    printf("non-monotonic fbx ts!\n");
-	  }
-	
-	if (whirr < whirr_prev)
-	  {
 
-	    if (whirr +50 >= whirr_prev)
-	      {
-		printf("slightly non-monotonic WRTS, cheating.\n");
-		whirr=whirr_prev;
-	      }
-	    else
-	      {
-		printf("non-monotonic WRTS! (ts conversion difference %ld)\n", whirr_prev - febex2wrts(first_ts_prev));
-	    /*   printf("wr=%08x%08x..%08x%08x fbx=%08x%08x..%08x%08x, current=%08x%08x -> %08x%08x  prev=%08x%08x -> %08x%08x\n",
-		 wr_ts_last >> 32, 0xffffffff & wr_ts_last,
-		 wr_ts_current >> 32, 0xffffffff & wr_ts_current,
-		 febex_ts_last >> 32, 0xffffffff & febex_ts_last,
-		 febex_ts_current >> 32, 0xffffffff & febex_ts_current,
-		 first_ts >> 32, 0xffffffff & first_ts,
-		 whirr >> 32, 0xffffffff & whirr,
-		 first_ts_prev >> 32, 0xffffffff & first_ts_prev,
-		 whirr_prev >> 32, 0xffffffff & whirr_prev		 
-		 );*/
-	    
-	    //printf("   fbx: currentRO - first = %f s\n", 16.6666e-9*((int64_t)febex_ts_current-first_ts));
-		printf("   fbx: first - previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
-		printf("  wrts: first - previous =  %f s\n", 1e-9*(double)((int64_t)whirr_prev - whirr));
-		//printf("   fbx: first -  previous = %f s\n",  16.6666e-9*(double)((int64_t)first_ts-first_ts_prev));
-		printf("    %f\n", (double)delta_wrts/(double)delta_febex);
-		printf("non-monotonic WRTS are fatal.");
-		exit(-1);
-	      }
-	  }
+	assert (whirr_prev<=whirr);
 	
 	whirr_prev = whirr;
-	first_ts_prev=first_ts;
-
 	memcpy(_file_event._subevents[idx_subevent]._data, &wr, sizeof(wr));
 	total_proc_size[evnt->proc_id] = WRTS_SIZE;
       }
@@ -273,7 +196,7 @@ multievent_entry* lmd_source_multievent::next_singleevent()
   _TRACE("lmd_source_multievent::next_singleevent()\n");
 
   // No more events available? Load more!
-  if(events_available.empty())
+  if(events_available.empty() || events_available.front()->wrts+200*50/3 > wr_ts_current)
   {
     input_status = load_events();
 
@@ -297,7 +220,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   uint32_t bufsize, channel_header;
   int sfp_id, module_id, channel_id;
   uint32_t proc_id;
-  int64_t ts_normalize, ts_skew, ts_header;
+  int64_t ts_normalize[4]{-1,-1,-1,-1};
   keep_buffer_wrapper *alloc;
 
   static uint16_t badmodules[4][20]; //sfp, module
@@ -354,9 +277,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
     _TRACE("lmd_source_multievent::load_events(): Creating new buffer. Total count: %ld\n", data_alloc.size());
   }
 
-  ts_normalize = -1;
   buguser++;
-  ts_skew = 0;
   for(int i = 0; i < _file_event._nsubevents; i++)
   {
     se = &(_file_event._subevents[i]);
@@ -428,7 +349,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       channel_id = (uint8_t)((channel_header >> 24) & 0xff);
       module_id = (uint8_t)((channel_header >> 16) & 0xff);
       sfp_id = (uint8_t)((channel_header >> 12) & 0xf);
-
+      assert(sfp_id<4);
       // check for monotony in sfp, mod, channel
       {
 	if (sfp_id!=last_sfp)
@@ -461,10 +382,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       }
 
       int hit_no=0;
-
+      int64_t ts_skew, ts_header;
       // Get readout timestamp from special channel and correct possible TS skew between modules/crates/processors
       if(channel_id == 0xff)
       {
+	_TRACE("Found_SC sfp=%d, mod=%d, tsn=%ld\n", sfp_id, module_id, ts_normalize[sfp_id]);
         if(bufsize != 8)
         {
           fprintf(stderr, "[ERROR] Special channel 0xff has invalid data size: %d (Processor %d, SFP %d, module %d)\n",
@@ -474,32 +396,33 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 
         if(_file_event._header._info.i_trigger == T_TCAL)
         {
+
           ts_header = (int64_t)((*pl_data++) & 0x00ffffff) << 32;
           ts_header |= (int64_t)*(pl_data++);
 
-          if(ts_normalize < 0)
+          if(ts_normalize[sfp_id] < 0) // module 0
           {
-            ts_normalize = ts_header;
+            ts_normalize[sfp_id] = ts_header;
             ts_skew = 0;
-            _TRACE("Current base timestamp: 0x%08lx\n", ts_normalize);
-	    update_ts_conv(wr_latest, ts_normalize);
+            _TRACE("Current base timestamp for sfp %d: 0x%08lx\n", (int)sfp_id, ts_normalize[sfp_id]);
+	    update_ts_conv(wr_latest, ts_normalize[sfp_id], (uint8_t)sfp_id);
           }
-	  else if (labs(ts_header-febex_ts_last)<1000)
+	  else if (labs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
 	  {
 	    bankswitch_issue[sfp_id][module_id]=1;
 	    ts_skew=0xdeadbeefdeadbeef;
 	  }
-          else
+          else // module N
           {
-            ts_skew = ts_header - ts_normalize;
+            ts_skew = ts_header - ts_normalize[sfp_id];
 	    
-            if((ts_skew < -TS_SKEW_WARN || ts_skew > TS_SKEW_WARN)  && ! (buguser%BUGUSER))
+            if(labs(ts_skew) > TS_SKEW_WARN  && ! (buguser%BUGUSER))
             {
               fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %d: %ld (Trigger %d), drift rate: %e\n",
 		      proc_id, sfp_id,
 		      module_id, ts_skew,
 		      _file_event._header._info.i_trigger,
-		      ts_skew/20e6/(time(nullptr)-starttime)
+		      double(ts_skew)/20e6/double(time(nullptr)-starttime)
 		      );
             }
 	    if (labs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
@@ -518,7 +441,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 		 proc_ts_skew[20*sfp_id + module_id] );
 
         } //T_TCAL
-        else
+        else  //irrelevant
         {
           pl_data += bufsize/4;
           if(proc_ts_skew.count(20*sfp_id + module_id) == 1)
@@ -527,7 +450,8 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
             ts_skew = 0;
         }
 	found_special_ch[sfp_id][module_id]=1;
-        continue;
+        continue; // skip special channel in output
+        //TODO: keep in stream
       } // end of special channel
 
       // _TRACE(" + Channel %d\n", channel);
@@ -562,19 +486,21 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	    }
 	      
 	  uint64_t fbxts=event_entry->timestamp;
-	  if ((int64_t)fbxts<(int64_t)febex_ts_last-50 )
+	  if ((int64_t)fbxts<(int64_t)febex_ts_last[sfp_id]-50 )
 	    {
-	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d)\n", febex_ts_last-fbxts,
-		      (double)(febex_ts_last-fbxts)*16.666666666e-9,
+	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d)\n", febex_ts_last[sfp_id]-fbxts,
+		      (double)(febex_ts_last[sfp_id]-fbxts)*16.666666666e-9,
 		      sfp_id, module_id, (int)channel_id, hit_no);
+              fprintf(stderr, "febex_ts_last = %20ld -- fbxts = %20ld @ %01d.%02d.%02d \n", febex_ts_last[sfp_id], fbxts,
+		      sfp_id, module_id, (int)channel_id);
 	      badmodules[sfp_id][module_id]++;
 	    }
-	  else if ((int64_t)fbxts>(int64_t)febex_ts_current+200 )
+	  else if ((int64_t)fbxts>(int64_t)febex_ts_current[sfp_id]+200 )
 	    {
-	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d)\n", -febex_ts_current+fbxts,
-		      (double)(-febex_ts_current+fbxts)*16.666666e-9,
+	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d)\n", -febex_ts_current[sfp_id]+fbxts,
+		      (double)(-febex_ts_current[sfp_id]+fbxts)*16.666666e-9,
 		      sfp_id, module_id, (int)channel_id, hit_no);
-	      fprintf(stderr, "abs ts is %ld, readout is %ld\n", fbxts, febex_ts_current);
+	      fprintf(stderr, "abs ts is %ld, readout is %ld\n", fbxts, febex_ts_current[sfp_id]);
 	      badmodules[sfp_id][module_id]++;
 	    }
 	  else
@@ -593,11 +519,12 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 
 	  memcpy(event_entry->data, pl_bufhead, 8);
 	  memcpy(event_entry->data + 2, pl_data, event_entry->size - 8);
-#define UPDATE_TS 1
+#define UPDATE_TS 0
 #if UPDATE_TS
 	  event_entry->data[5]=(uint32_t)((event_entry->timestamp)>>32);
 	  event_entry->data[4]=(uint32_t)(event_entry->timestamp);
 #endif
+          event_entry->wrts=febex2wrts(event_entry->timestamp, event_entry->sfp_id);
 	  hit_no++;
 	  // Adjust size of GOSIP buffer header
 	  *(event_entry->data + 1) = event_entry->size - 8;
@@ -634,7 +561,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 
 bool multievent_entry::compare(const multievent_entry *e1, const multievent_entry *e2)
 {
-  return (e1->timestamp < e2->timestamp);
+  return (e1->wrts < e2->wrts);
 }
 
 void* multievent_entry::operator new(size_t bytes, keep_buffer_wrapper &alloc)
@@ -660,6 +587,6 @@ lmd_source_multievent::lmd_source_multievent() : l_count(0)
   curbuf = data_alloc.begin();
   assert(sizeof(wrts_header)==5*4);
 
-  init_ts_conv();
+  //init_ts_conv();
 }
 
