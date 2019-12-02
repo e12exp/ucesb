@@ -69,7 +69,7 @@ lmd_event *lmd_source_multievent::get_event()
 
   first_ts = evnt->wrts;
 
-  //printf("before %08x:%08x %08x:%08x\n", first_ts >> 32, 0xffffffff&first_ts, febex_ts_current >> 32, 0xffffffff&febex_ts_current);
+ //printf("before %08x:%08x %08x:%08x\n", first_ts >> 32, 0xffffffff&first_ts, febex_ts_current >> 32, 0xffffffff&febex_ts_current);
 
   
   do
@@ -107,6 +107,7 @@ lmd_event *lmd_source_multievent::get_event()
     // -> Break and return input event
     _TRACE("=> return &_file_event (input event)\n");
     fprintf(stderr, "error, returned input event!\n");
+    events_curevent.clear();
     return &_file_event;
   }
   
@@ -202,7 +203,10 @@ multievent_entry* lmd_source_multievent::next_singleevent()
 
     // Still no available? Either end of file or wrong event type => Break
     if(events_available.empty())
-      return NULL;
+      {
+	fprintf(stderr, "lmd_source_multievent::next_singleevent(): no event available after load_events()\n");
+	return NULL;
+      }
   }
 
   return events_available.front();
@@ -532,7 +536,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  events_read.push_back(event_entry);
 	} // !bankswitch_issue
 	   
-        pl_data += (event_entry->size - 8)/4;
+	pl_data += (*pl_data & 0xffff)/4;
       }
     }
   }
