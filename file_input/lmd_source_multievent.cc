@@ -164,6 +164,8 @@ lmd_event *lmd_source_multievent::get_event()
 	static uint64_t whirr_prev = 0;
 	//printf("fbx %lx -> wrts %lx\n", first_ts, whirr);
 
+	if (whirr_prev>whirr)
+	  fprintf(stderr, "WR non-monotonous, delta=%ld\n", whirr-whirr_prev);
 	assert (whirr_prev<=whirr);
 	
 	whirr_prev = whirr;
@@ -238,6 +240,8 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   
   static uint32_t buguser=0;
 
+  bool dropall=0;
+  
   _TRACE("lmd_source_multievent::load_events()\n");
 
   _file_event.release();
@@ -410,6 +414,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
             ts_skew = 0;
             _TRACE("Current base timestamp for sfp %d: 0x%08lx\n", (int)sfp_id, ts_normalize[sfp_id]);
 	    update_ts_conv(wr_latest, ts_normalize[sfp_id], (uint8_t)sfp_id);
+	    if (!ts_normalize[sfp_id] && !dropall)
+	      {
+		fprintf(stderr, "DAQ restart detected. dropping first readout.\n");
+		dropall=1;
+	      }
           }
 	  else if (labs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
 	  {
@@ -473,7 +482,39 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	    fprintf(stderr, "[WARNING] Invalid event header: 0x%08x\n", *pl_data);
 	    break;
 	  }
-	if (!bankswitch_issue[sfp_id][module_id])
+
+	uint64_t fbxts=(*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32)) -  ts_skew;
+	bool good=!bankswitch_issue[sfp_id][module_id] && !dropall;
+	if (good)
+	  {
+	    if ((int64_t)fbxts<(int64_t)febex_ts_last[sfp_id]-50 )
+	      {
+		fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d).\n => DROPPED EVENT. \n", febex_ts_last[sfp_id]-fbxts,
+			(double)(febex_ts_last[sfp_id]-fbxts)*16.666666666e-9,
+			sfp_id, module_id, (int)channel_id, hit_no);
+		fprintf(stderr, "febex_ts_last = %20ld -- fbxts = %20ld @ %01d.%02d.%02d, pl_data=%p \n", febex_ts_last[sfp_id], fbxts,
+			sfp_id, module_id, (int)channel_id, pl_data);
+		badmodules[sfp_id][module_id]++;
+		good=0;
+	    }
+	    else if ((int64_t)fbxts>(int64_t)febex_ts_current[sfp_id]+200 )
+	      {
+		fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d).\n => DROPPED EVENT.\n", -febex_ts_current[sfp_id]+fbxts,
+			(double)(-febex_ts_current[sfp_id]+fbxts)*16.666666e-9,
+			sfp_id, module_id, (int)channel_id, hit_no);
+		fprintf(stderr, "abs ts is %ld, readout is %ld\n", fbxts, febex_ts_current[sfp_id]);
+		badmodules[sfp_id][module_id]++;
+		good=0;
+	      }
+	    else
+	      {
+		goodmodules[sfp_id][module_id]++;
+	      //	    fprintf(stderr, "%d  ", (int)channel_id);
+	      }
+	  } // check fbx ts (unless already bs issue)
+
+	  
+	if (good)
 	{
 	  event_entry = new (*alloc) multievent_entry(alloc);
 	  event_entry->_header = se->_header;
@@ -481,7 +522,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  event_entry->module_id = (uint8_t)module_id;
 	  event_entry->sfp_id = (uint8_t)sfp_id;
 	  event_entry->proc_id = proc_id;
-	  event_entry->timestamp = (*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32)) -  ts_skew;
+	  event_entry->timestamp = fbxts;
 	  
 	  if (!found_special_ch[sfp_id][module_id])
 	    {
@@ -489,30 +530,6 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	      found_special_ch[sfp_id][module_id]=1; //only bug user once
 	    }
 	      
-	  uint64_t fbxts=event_entry->timestamp;
-	  if ((int64_t)fbxts<(int64_t)febex_ts_last[sfp_id]-50 )
-	    {
-	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the previous readout slice @ %01d.%02d.%02d (hit %d)\n", febex_ts_last[sfp_id]-fbxts,
-		      (double)(febex_ts_last[sfp_id]-fbxts)*16.666666666e-9,
-		      sfp_id, module_id, (int)channel_id, hit_no);
-              fprintf(stderr, "febex_ts_last = %20ld -- fbxts = %20ld @ %01d.%02d.%02d \n", febex_ts_last[sfp_id], fbxts,
-		      sfp_id, module_id, (int)channel_id);
-	      badmodules[sfp_id][module_id]++;
-	    }
-	  else if ((int64_t)fbxts>(int64_t)febex_ts_current[sfp_id]+200 )
-	    {
-	      fprintf(stderr, "found a febex ts %20ld fbx ticks (%e s) in the next readout slice! @ %01d.%02d.%02d (hit %d)\n", -febex_ts_current[sfp_id]+fbxts,
-		      (double)(-febex_ts_current[sfp_id]+fbxts)*16.666666e-9,
-		      sfp_id, module_id, (int)channel_id, hit_no);
-	      fprintf(stderr, "abs ts is %ld, readout is %ld\n", fbxts, febex_ts_current[sfp_id]);
-	      badmodules[sfp_id][module_id]++;
-	    }
-	  else
-	    {
-	      goodmodules[sfp_id][module_id]++;
-	      //	    fprintf(stderr, "%d  ", (int)channel_id);
-	    }
-	  
 	  //fprintf(stderr, "found a febex ts %ulld  @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,sfp_id, module_id, channel_id);
 	  _TRACE("skew: %ld", ts_skew);
 	  //       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ulld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
@@ -529,13 +546,12 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  event_entry->data[4]=(uint32_t)(event_entry->timestamp);
 #endif
           event_entry->wrts=febex2wrts(event_entry->timestamp, event_entry->sfp_id);
-	  hit_no++;
 	  // Adjust size of GOSIP buffer header
 	  *(event_entry->data + 1) = event_entry->size - 8;
 	  
 	  events_read.push_back(event_entry);
-	} // !bankswitch_issue
-	   
+	} // if good
+	hit_no++;
 	pl_data += (*pl_data & 0xffff)/4;
       }
     }
@@ -547,6 +563,12 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	fprintf(stderr, "%s for %d.%02d.*\n", (bankswitch_issue[sfp][m]==1)?"BANKSWITCH ISSUE":"TS JUMP", sfp, m);	
       else if (badmodules[sfp][m])
 	fprintf(stderr, "summary for %02d.%02d: %03d good, %03d bad\n", (int)sfp,(int)m, (int)goodmodules[sfp][m], (int)badmodules[sfp][m]);
+
+  if (dropall) // after daq restart
+    {
+      fprintf(stderr, "skipping to next event.\n");
+      return load_events();
+    }
   
   if(events_read.empty())
     return unknown_event;
@@ -559,7 +581,6 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   sort(events_available.begin(), events_available.end(), multievent_entry::compare);  
   // ^-- sort everything, in case an event made it in one readout for one febex but not in another
   events_read.clear();
-
   return ready;
 }
 
