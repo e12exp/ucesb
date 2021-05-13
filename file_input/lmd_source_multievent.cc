@@ -3,7 +3,6 @@
 
 #include "lmd_source_multievent.hh"
 #include "lmd_input.hh"
-#include "config.hh"
 #include <inttypes.h>
 
 #include <time.h>
@@ -305,8 +304,14 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 
     pl_data=pl_start;
     // get WR timestamp
-    if (pl_data < pl_end && *pl_data == 0x400) // 0x400: febex system id
+    if (pl_data < pl_end) // WR header.
       {
+	if (*pl_data != _conf._enable_eventbuilder)
+	  {
+	    fprintf(stderr, "DAQ WR ID = 0x%x, event-builder expected 0x%x!\n",
+		*pl_data, _conf._enable_eventbuilder);
+	    return unknown_event;
+	  }
 	if (pl_data+5 > pl_end)
 	  {
 	    fprintf(stderr, "White Rabbit: Short frame (0x%p to 0x%p, size %ld).\n",

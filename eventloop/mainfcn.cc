@@ -76,7 +76,7 @@ void usage()
   printf (" (--in-tuple)       No external reader support compiled in.\n");
 #endif
 #ifdef USE_INPUTFILTER
-  printf ("  --eventbuilder    Enable multi event builder (splitting, sorting, time stitching)\n");
+  printf ("  --eventbuilder=id Enable multi event builder (splitting, sorting, time stitching)\n");
   printf ("  --eb-time-stitch=N   Define coincidence window for event building in ns. Default: 1000 (1 us) (UNTESTED.)\n");
 #else
   printf (" (--eventbuilder)   No support for event building compiled in.\n");
@@ -531,8 +531,13 @@ int main(int argc, char **argv)
       }
 #endif//USE_LMD_INPUT
 #ifdef USE_INPUTFILTER
-      else if (MATCH_ARG("--eventbuilder")) {
-         _conf._enable_eventbuilder = 1;
+      else if (MATCH_PREFIX("--eventbuilder=",post)) {
+	 int base = 10;
+	 if (0 == strncmp(post,"0x",2)) {
+	    base = 16;
+	    post += 2;
+	 }
+         _conf._enable_eventbuilder = (uint32_t)strtol(post,NULL,base);
       }
       else if (MATCH_PREFIX("--eb-time-stitch=",post)) {
          _conf._eventbuilder_ts = atoi(post);

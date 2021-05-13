@@ -59,7 +59,7 @@ struct config_opts
 #endif
 
 #ifdef USE_INPUTFILTER
-  int _enable_eventbuilder;
+  uint32_t _enable_eventbuilder;
   uint64_t _eventbuilder_ts;
 #endif
 

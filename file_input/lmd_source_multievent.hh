@@ -10,6 +10,7 @@
 struct lmd_source_multievent;
 struct lmd_event_multievent;
 
+#include "config.hh"
 #include "lmd_input.hh"
 #include "thread_buffer.hh"
 
@@ -188,7 +189,7 @@ struct wrts_header
   uint32_t upper16;
 public:
   wrts_header(uint64_t ts):
-    system_id(0x400),
+    system_id(_conf._enable_eventbuilder),
     lower16(   0x03e10000 | (0xffff & (uint32_t)(ts    ))),
     midlower16(0x04e10000 | (0xffff & (uint32_t)(ts>>16))),
     midupper16(0x05e10000 | (0xffff & (uint32_t)(ts>>32))),
