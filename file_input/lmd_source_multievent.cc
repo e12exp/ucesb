@@ -402,7 +402,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
           pl_data += bufsize/4;
         }
 
-        if(_file_event._header._info.i_trigger == T_TCAL)
+        if(1 || _file_event._header._info.i_trigger == T_TCAL)
         {
 
           ts_header = (int64_t)((*pl_data++) & 0x00ffffff) << 32;
