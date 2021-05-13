@@ -1288,12 +1288,12 @@ downscale_event:
 			check_new_file_header = true;
 #endif
 			// This is not an I/O error, it's a format fault
-			WARNING("Too many (%"PRIu64") errors, next file...",errors);
+			WARNING("Too many (%" PRIu64 ") errors, next file...",errors);
 			goto no_more_events;
 		      }
 		    else
 		      {
-			WARNING("Too many (%"PRIu64") errors, aborting...",total_errors);
+			WARNING("Too many (%" PRIu64 ") errors, aborting...",total_errors);
 			goto no_more_files;
 		      }
 		  }
@@ -1622,7 +1622,7 @@ downscale_event:
 				  }
 
 				fprintf(stderr,
-					"%s%"PRIu64"%s  (%s%.1f%sk/s)  ",
+					"%s%" PRIu64 "%s  (%s%.1f%sk/s)  ",
 					CT_OUT(BOLD_GREEN),
 					events,
 					CT_OUT(NORM_DEF_COL),
@@ -1639,9 +1639,9 @@ downscale_event:
 #endif
 			      {
 			    fprintf(stderr,"Processed: "
-				    "%s%"PRIu64"%s  (%s%.1f%sk/s)  "
-				    "%s%"PRIu64"%s  (%s%.1f%sk/s) "
-				    "(%s%"PRIu64"%s errors)      \r",
+				    "%s%" PRIu64 "%s  (%s%.1f%sk/s)  "
+				    "%s%" PRIu64 "%s  (%s%.1f%sk/s) "
+				    "(%s%" PRIu64 "%s errors)      \r",
 				    CT_OUT(BOLD_GREEN),
 				    events,
 				    CT_OUT(NORM_DEF_COL),
@@ -1722,9 +1722,9 @@ downscale_event:
     }
 
     INFO("Events: "
-	 ERR_GREEN"%"PRIu64 ERR_ENDCOL"   "
-	 ERR_BLUE"%"PRIu64 ERR_ENDCOL"             ("
-	 ERR_RED"%"PRIu64 ERR_ENDCOL" errors)                \n",
+	 ERR_GREEN "%" PRIu64 ERR_ENDCOL "   "
+	 ERR_BLUE "%" PRIu64 ERR_ENDCOL "             ("
+	 ERR_RED "%" PRIu64 ERR_ENDCOL " errors)                \n",
 	 events,total_multi,total_errors);
     try {
       loop.postprocess();
