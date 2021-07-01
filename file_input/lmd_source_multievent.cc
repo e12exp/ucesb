@@ -14,7 +14,7 @@
 // Time calibration trigger type
 #define T_TCAL 1
 
-#define TS_SKEW_WARN 4
+#define TS_SKEW_RATE_WARN 1e-10
 
 #define DT (_conf._eventbuilder_ts)
 
@@ -24,7 +24,6 @@
 
 #define BUGUSER 0x10 // debug/soft error suppresion factor
 
-static time_t starttime=time(nullptr);
 
 lmd_event *lmd_source_multievent::get_event()
 {
@@ -205,7 +204,8 @@ multievent_entry* lmd_source_multievent::next_singleevent()
     // Still no available? Either end of file or wrong event type => Break
     if(events_available.empty())
       {
-	fprintf(stderr, "lmd_source_multievent::next_singleevent(): no event available after load_events()\n");
+	//fprintf(stderr, "lmd_source_multievent::next_singleevent(): no event available after load_events()\n");
+        // this happens on T3 (sync trigger)
 	return NULL;
       }
   }
@@ -238,7 +238,6 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   memset(bankswitch_issue, 0, sizeof(bankswitch_issue));
   
   static uint32_t buguser=0;
-
   bool dropall=0;
   
   _TRACE("lmd_source_multievent::load_events()\n");
@@ -278,9 +277,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   // -> If so, we need one more buffer
   if(!alloc->available())
   {
-    alloc = new keep_buffer_wrapper();
+    
+    alloc = new keep_buffer_wrapper();  // VALGRIND
     curbuf = data_alloc.insert(curbuf, alloc);
-
+    if (1)
+      fprintf(stderr, "data_alloc.size()==%ld, events_available.size()=%ld\n", data_alloc.size(), events_available.size());
     _TRACE("lmd_source_multievent::load_events(): Creating new buffer. Total count: %ld\n", data_alloc.size());
   }
 
@@ -425,7 +426,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 		dropall=1;
 	      }
           }
-	  else if (labs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
+	  else if (std::abs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
 	  {
 	    bankswitch_issue[sfp_id][module_id]=1;
 	    ts_skew=0xdeadbeefdeadbeef;
@@ -433,14 +434,14 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
           else // module N
           {
             ts_skew = ts_header - ts_normalize[sfp_id];
-	    
-            if(labs(ts_skew) > TS_SKEW_WARN  && ! (buguser%BUGUSER))
+            double skew_rate= double(ts_skew)/double(ts_normalize[sfp_id]);
+
+            if(std::abs(skew_rate)>10 && std::abs(skew_rate) > TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
             {
-              fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %d: %ld (Trigger %d), drift rate: %e\n",
+              fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %02d:, drift: %3ld,  rate: %e\n",
 		      proc_id, sfp_id,
 		      module_id, ts_skew,
-		      _file_event._header._info.i_trigger,
-		      double(ts_skew)/20e6/double(time(nullptr)-starttime)
+                      skew_rate
 		      );
             }
 	    if (labs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
@@ -541,7 +542,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  
 	  event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
 	  _TRACE("    Size: %d\n", event_entry->size);
-	  event_entry->data = (uint32_t*)alloc->allocate(event_entry->size);
+	  event_entry->data = (uint32_t*)alloc->allocate(event_entry->size); // VALGRIND
 
 	  memcpy(event_entry->data, pl_bufhead, 8);
 	  memcpy(event_entry->data + 2, pl_data, event_entry->size - 8);
@@ -596,14 +597,14 @@ bool multievent_entry::compare(const multievent_entry *e1, const multievent_entr
 
 void* multievent_entry::operator new(size_t bytes, keep_buffer_wrapper &alloc)
 {
-  return alloc.allocate(bytes);
+  return alloc.allocate(bytes); // VALGRIND
 }
 
 void multievent_entry::operator delete(void *ptr)
 {
   _TRACE("delete %p\n", ptr);
   multievent_entry *e = static_cast<multievent_entry*>(ptr);
-  e->data_alloc->release();
+  e->data_alloc->release(); //VALGRIND
 }
 
 lmd_source_multievent::lmd_source_multievent() : l_count(0)
@@ -613,7 +614,7 @@ lmd_source_multievent::lmd_source_multievent() : l_count(0)
 
   data_alloc.push_back(new keep_buffer_wrapper());
   data_alloc.push_back(new keep_buffer_wrapper());
-  
+  fprintf(stderr, "alloc!\n");
   curbuf = data_alloc.begin();
   assert(sizeof(wrts_header)==5*4);
 
