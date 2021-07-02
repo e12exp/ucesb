@@ -104,9 +104,10 @@ lmd_event *lmd_source_multievent::get_event()
       // Something went wrong while loading data
     // -> Break and return input event
     _TRACE("=> return &_file_event (input event)\n");
-    fprintf(stderr, "error, returned input event!\n");
+    fprintf(stderr, "error, returned null!\n");
     events_curevent.clear();
-    return &_file_event;
+    //    return &_file_event;
+    return NULL;
   }
   
   else if(!evnt && input_status == eof && events_curevent.empty())
@@ -280,7 +281,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
     
     alloc = new keep_buffer_wrapper();  // VALGRIND
     curbuf = data_alloc.insert(curbuf, alloc);
-    if (1)
+    if (0)
       fprintf(stderr, "data_alloc.size()==%ld, events_available.size()=%ld\n", data_alloc.size(), events_available.size());
     _TRACE("lmd_source_multievent::load_events(): Creating new buffer. Total count: %ld\n", data_alloc.size());
   }
