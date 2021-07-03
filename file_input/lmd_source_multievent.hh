@@ -1,11 +1,8 @@
 #ifndef _LMD_SOURCE_MULTIEVENT_H_
 #define _LMD_SOURCE_MULTIEVENT_H_
 
-#include <list>
-#include <map>
 #include <boost/circular_buffer.hpp>
-#include <vector>
-#include <deque>
+#include <array>
 #include <stdint.h>
 
 struct lmd_source_multievent;
@@ -45,102 +42,12 @@ struct multievent_entry
                  free(data);
                }
 	}
-
         static bool compare(const multievent_entry *e1, const multievent_entry *e2);
-
 };
 
 typedef std::deque< multievent_entry* > multievent_queue;
 
-class lmd_source_multievent : public lmd_source
-{
-protected:
-  enum file_status_t { ready, eof, unknown_event };
-  
-  uint64_t febex_ts_current[4]{}; // at readout
-  uint64_t wr_ts_current{0};
-  uint64_t febex_ts_last[4]{};    // at readout
-  uint64_t wr_ts_last{0};
-  double ts_conv_slope[4]{50./3,50./3,50./3,50./3}; 
-  file_status_t input_status;
 
-  // Timestamp skew per processor
-  std::map<uint32_t, int64_t> proc_ts_skew;
-
-  lmd_event_hint event_hint;
-  lmd_event_10_1_host input_event_header;
-  sint32 l_count;
-
-  // we have 4*16*16=1024 channels, each of which could send us up to 200 hits
-  // plus some overhead (e.g *2) for overlapping readouts.
-  // this works out at 4 MB
-  #define CIRC_BUF_SIZE size_t(4*16*16*256*2)
-  //#define CIRC_BUF_SIZE size_t(4*16*2)
-  boost::circular_buffer<multievent_entry* > events_available;
-  std::vector<multievent_entry* > events_curevent;
-
-  file_status_t load_events();
-  
-  multievent_entry* next_singleevent();
-  
-public:
-  uint64_t febex2wrts(uint64_t fbxts, uint8_t sfp) //TODO
-  {
-    assert(sfp<4);
-    static bool warned=0;
-    if (!warned++ && !wr_ts_current)
-      fprintf(stderr, "febex2wrts: WRTS is zero. This should never happen.\n");
-
-    return (int64_t)wr_ts_current+(int64_t)(double((int64_t)fbxts-(int64_t)febex_ts_current[sfp])
-            *ts_conv_slope[sfp]);
-  }
-
-
-  void update_ts_conv(uint64_t wrts, uint64_t fbxts, uint8_t sfp)
-  {
-    _TRACE("update_ts_conv(wrts=%ld, fbxts=%ld, sfp=%d)\n", wrts, fbxts, (int)sfp);
-    assert(sfp<4);
-    febex_ts_last[sfp]=febex_ts_current[sfp];
-    if (wrts && wrts!=wr_ts_current)
-    {    
-       wr_ts_last=wr_ts_current;
-       wr_ts_current=wrts;
-    }
-    febex_ts_current[sfp]=fbxts;
-
-    static uint16_t warned=0;
-    if (!wrts)
-      {
-	wr_ts_current=50*fbxts/3;
-	if (!warned++)
-	  fprintf(stdout,
-		  "**************************************************\n"
-		  "update_ts_conv: Either epoch is currently a multiple of 2^64 ns\n"
-		  " (happy anniversary)\n"
-		  " or your febex data did not include WRTS data (e.g. from PEXARIA). \n"
-		  "I will fake a WRTS like timestamp based on the febex ts.\n"
-		  "THIS WILL BE UNMERGEABLE WITH ANYTHING ELSE.\n"
-		  "*************************************************\n\n");
-      }
-    if (!wr_ts_last || int64_t(febex_ts_current[sfp]) - int64_t(febex_ts_last[sfp]) <= 0) 
-      {
-	// one point interpolation using the standard febex ts rate of 50/3 ns
-        ts_conv_slope[sfp]=50./3;
-      }
-    else
-      {
-	double delta_febex =  double(febex_ts_current[sfp] - febex_ts_last[sfp]);
-	double delta_wrts  =  double(wr_ts_current - wr_ts_last);
-	assert(febex_ts_current[sfp] > febex_ts_last[sfp]);
-	assert(wr_ts_current > wr_ts_last);
-        ts_conv_slope[sfp]=delta_wrts/delta_febex;
-      }
-  }
-  
-  lmd_source_multievent(); 
-
-  virtual lmd_event *get_event();
-};
 
 struct wrts_header
 {
@@ -157,6 +64,60 @@ public:
     midupper16(0x05e10000 | (0xffff & (uint32_t)(ts>>32))),
     upper16(   0x06e10000 | (0xffff & (uint32_t)(ts>>48)))
   {}
+};
+
+
+class lmd_source_multievent : public lmd_source
+{
+protected:
+  enum file_status_t { ready, eof, unknown_event };
+  
+  uint64_t febex_ts_current[4]{}; // at readout
+  uint64_t wr_ts_current{0};
+  uint64_t febex_ts_last[4]{};    // at readout
+  uint64_t wr_ts_last{0};
+  double ts_conv_slope[4]{50./3,50./3,50./3,50./3}; 
+  file_status_t input_status;
+  std::array<int64_t, 20*4> proc_ts_skew {{}};
+
+  lmd_event_hint event_hint;
+  lmd_event_10_1_host input_event_header;
+
+  // we have 4*16*16=1024 channels, each of which could send us up to 200 hits
+  // plus some overhead (e.g *2) for overlapping readouts.
+  // this works out at 4 MB
+  #define CIRC_BUF_SIZE size_t(4*16*16*256*2)
+  //#define CIRC_BUF_SIZE size_t(4*16*2)
+  boost::circular_buffer<multievent_entry* > events_available;
+
+  file_status_t load_events();
+  
+  multievent_entry* next_singleevent();
+  
+  uint64_t febex2wrts(uint64_t fbxts, uint8_t sfp);
+
+  void update_ts_conv(uint64_t wrts, uint64_t fbxts, uint8_t sfp);
+
+public:
+  lmd_source_multievent() : events_available(CIRC_BUF_SIZE)
+  {
+    // Create a double buffer for event reading
+    // - will later be extended if needed
+    
+    assert(sizeof(wrts_header)==5*4);
+    
+    //init_ts_conv();
+  }
+
+
+  ~lmd_source_multievent()
+  {
+    for (auto&& e: events_available)
+      delete e;
+  }
+
+
+  virtual lmd_event *get_event();
 };
 
 #endif

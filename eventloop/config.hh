@@ -60,7 +60,6 @@ struct config_opts
 
 #ifdef USE_INPUTFILTER
   uint32_t _enable_eventbuilder;
-  uint64_t _eventbuilder_ts;
 #endif
 
 #ifdef USE_LMD_INPUT

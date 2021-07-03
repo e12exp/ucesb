@@ -77,9 +77,6 @@ void usage()
 #endif
 #ifdef USE_INPUTFILTER
   printf ("  --eventbuilder=id Enable multi event builder (splitting, sorting, time stitching)\n");
-  printf ("  --eb-time-stitch=N   Define coincidence window for event building in ns. Default: 1000 (1 us) (UNTESTED.)\n");
-#else
-  printf (" (--eventbuilder)   No support for event building compiled in.\n");
 #endif
 #ifdef USE_MERGING
   printf ("  --merge=style,N   Merge events (in order) from N files, sort by style:\n");
@@ -480,10 +477,6 @@ int main(int argc, char **argv)
   colourtext_init();
   /******************************************************************/
 
-#if USE_INPUTFILTER
-  // Default coincidence window: 1us
-  _conf._eventbuilder_ts = 1000;
-#endif
 
   for (int i = 1; i < argc; i++)
     {
@@ -538,9 +531,6 @@ int main(int argc, char **argv)
 	    post += 2;
 	 }
          _conf._enable_eventbuilder = (uint32_t)strtol(post,NULL,base);
-      }
-      else if (MATCH_PREFIX("--eb-time-stitch=",post)) {
-         _conf._eventbuilder_ts = atoi(post);
       }
 #endif
 #ifdef USE_MERGING
@@ -708,7 +698,7 @@ int main(int argc, char **argv)
 
   if(_conf._enable_eventbuilder)
   {
-    INFO("CALIFA Event Builder enabled with coincidence window size = %lu ns units", _conf._eventbuilder_ts);
+    INFO("CALIFA Event Builder enabled. No coincidence for this module any more!\n");
   }
 
   /******************************************************************/

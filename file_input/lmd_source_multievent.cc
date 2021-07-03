@@ -22,34 +22,70 @@
 
 #define BUGUSER 0x10 // debug/soft error suppresion factor
 
+uint64_t lmd_source_multievent::febex2wrts(uint64_t fbxts, uint8_t sfp) //TODO
+{
+  assert(sfp<4);
+  static bool warned=0;
+  if (!warned++ && !wr_ts_current)
+    fprintf(stderr, "febex2wrts: WRTS is zero. This should never happen.\n");
+
+  return (int64_t)wr_ts_current+(int64_t)(double((int64_t)fbxts-(int64_t)febex_ts_current[sfp])
+                                          *ts_conv_slope[sfp]);
+}
+
+void lmd_source_multievent::update_ts_conv(uint64_t wrts, uint64_t fbxts, uint8_t sfp)
+{
+  _TRACE("update_ts_conv(wrts=%ld, fbxts=%ld, sfp=%d)\n", wrts, fbxts, (int)sfp);
+  assert(sfp<4);
+  febex_ts_last[sfp]=febex_ts_current[sfp];
+  if (wrts && wrts!=wr_ts_current)
+    {    
+      wr_ts_last=wr_ts_current;
+      wr_ts_current=wrts;
+    }
+  febex_ts_current[sfp]=fbxts;
+
+  static uint16_t warned=0;
+  if (!wrts)
+    {
+      wr_ts_current=50*fbxts/3;
+      if (!warned++)
+        fprintf(stdout,
+                "**************************************************\n"
+                "update_ts_conv: Either epoch is currently a multiple of 2^64 ns\n"
+                " (happy anniversary)\n"
+                " or your febex data did not include WRTS data (e.g. from PEXARIA). \n"
+                "I will fake a WRTS like timestamp based on the febex ts.\n"
+                "THIS WILL BE UNMERGEABLE WITH ANYTHING ELSE.\n"
+                "*************************************************\n\n");
+    }
+  if (!wr_ts_last || int64_t(febex_ts_current[sfp]) - int64_t(febex_ts_last[sfp]) <= 0) 
+    {
+      // one point interpolation using the standard febex ts rate of 50/3 ns
+      ts_conv_slope[sfp]=50./3;
+    }
+  else
+    {
+      double delta_febex =  double(febex_ts_current[sfp] - febex_ts_last[sfp]);
+      double delta_wrts  =  double(wr_ts_current - wr_ts_last);
+      assert(febex_ts_current[sfp] > febex_ts_last[sfp]);
+      assert(wr_ts_current > wr_ts_last);
+      ts_conv_slope[sfp]=delta_wrts/delta_febex;
+    }
+}
+
+
 
 lmd_event *lmd_source_multievent::get_event()
 {
-  /*  uint64_t ts=0;
-  for (auto x: events_available)
-    {
-      if (ts!=0 && (x)->timestamp < ts)
-	printf("sort does not work!\n");
-      ts=(x)->timestamp;
-      }*/
-
   
   _TRACE("lmd_source_multievent::get_event()\n");
 
   if(!_conf._enable_eventbuilder)
     return lmd_source::get_event();
 
-  uint64_t first_ts;
-  uint32_t total_size = 0;
-  std::map<uint32_t, uint32_t> total_proc_size;
-  std::map<uint32_t, multievent_entry*> proc_header;
-  std::map<uint32_t, uint32_t> proc_idx_subevent;
-  uint32_t idx_subevent;
-
   multievent_entry *evnt;
 
-  assert(events_curevent.empty());
-  // No left overs from last buffer
   evnt = next_singleevent();
  
   if(!evnt && input_status == eof)
@@ -59,131 +95,38 @@ lmd_event *lmd_source_multievent::get_event()
   }
   else if(!evnt)
   {
-    _TRACE("return _file_event (evnt = NULL, unknown_event)\n");
-    return &_file_event;
+    _TRACE("confused: unknown event. Bailing.\n");
+    exit(1);
   }
 
-  first_ts = evnt->wrts;
-
- //printf("before %08x:%08x %08x:%08x\n", first_ts >> 32, 0xffffffff&first_ts, febex_ts_current >> 32, 0xffffffff&febex_ts_current);
-
+  uint64_t whirr = evnt->wrts;
+  static uint64_t whirr_prev = 0;
+  if (whirr_prev>whirr)
+    fprintf(stderr, "WR non-monotonous, delta=%ld\n", whirr-whirr_prev);
+  assert (whirr_prev<=whirr);  
+  whirr_prev = whirr;
   
-  do
-  {
-    assert(evnt == events_available.front());
-    assert(evnt->wrts >= first_ts);
-    events_available.pop_front();
-    events_curevent.push_back(evnt);
-    total_size += evnt->size;
-    _TRACE(" Total size: %d\n", total_size);
-
-    if(total_proc_size.count(evnt->proc_id) == 0)
-    {
-      total_proc_size[evnt->proc_id] = evnt->size;
-      proc_header[evnt->proc_id] = evnt;
-    }
-    else
-    {
-      total_proc_size[evnt->proc_id] += evnt->size;
-    }
-
-    evnt = next_singleevent();
-  }
-  while(evnt != NULL && evnt->wrts - first_ts <= DT && DT);
-  // ^ -- end of do while loop.  event building happening in there. 
-  // events_curevent is the container holding the coinciding events.
-  
-
-  //        if(evnt)
-  //          events_available.push_front(evnt);
-  if(!evnt && input_status != eof)
-  {
-      // Something went wrong while loading data
-    // -> Break and return input event
-    _TRACE("=> return &_file_event (input event)\n");
-    fprintf(stderr, "error, returned null!\n");
-    events_curevent.clear();
-    //    return &_file_event;
-    return NULL; //TODO
-  }
-  
-  else if(!evnt && input_status == eof && events_curevent.empty())
-  {
-    // BUT: If EOF is reached, return last event buffer
-    // ^---- does not look like you do this here --pklenze
-    _TRACE("=> return NULL (eof)\n");
-    return NULL;
-  }
-
-  _TRACE(" Allocating %d bytes\n", total_size);
   _file_event.release();
   _file_event._header = input_event_header;
-  _file_event._header._info.l_count = ++l_count;
-
-  // Create 1 subevent per processor
-  _file_event._nsubevents = (int)total_proc_size.size();
-  _file_event._subevents = (lmd_subevent *)
-    _file_event._defrag_event.allocate(_file_event._nsubevents * sizeof (lmd_subevent));
-
-  idx_subevent = 0;
-  for(std::map<uint32_t, uint32_t>::iterator pit = total_proc_size.begin(); pit != total_proc_size.end(); pit++)
-  {
-    _file_event._subevents[idx_subevent]._header = proc_header[pit->first]->_header;
-    _file_event._subevents[idx_subevent]._data =
-      (char*)_file_event._defrag_event_many.allocate(pit->second+WRTS_SIZE);
-    _file_event._subevents[idx_subevent]._header._header.l_dlen = (pit->second+WRTS_SIZE)/2 + 2; 
-
-    // Map processor ID to subevent array index
-    proc_idx_subevent[pit->first] = idx_subevent++;
-    
-    // Reset size to 0 for reuse as offset marker
-    total_proc_size[pit->first] = 0;
-
-  }
-  //printf("total size=%d\n", total_size);
-
-  _TRACE(" -> &_subevents = %p\n", _file_event._subevents);
-
-  total_size = 0;
-  _TRACE(" Collecting events\n");
-
-  for(decltype(events_curevent)::iterator it = events_curevent.begin(); it != events_curevent.end(); it++)
-  {
-    evnt = *it;
-    // Map hit to correct subevent for origin processor ID
-    idx_subevent = proc_idx_subevent[evnt->proc_id];
-    if (!total_proc_size[evnt->proc_id])
-      {
-	// add WRTS header for each proc
-	uint64_t whirr = first_ts;
-	wrts_header wr(whirr);
-	static uint64_t whirr_prev = 0;
-	//printf("fbx %lx -> wrts %lx\n", first_ts, whirr);
-
-	if (whirr_prev>whirr)
-	  fprintf(stderr, "WR non-monotonous, delta=%ld\n", whirr-whirr_prev);
-	assert (whirr_prev<=whirr);
-	
-	whirr_prev = whirr;
-	memcpy(_file_event._subevents[idx_subevent]._data, &wr, sizeof(wr));
-	total_proc_size[evnt->proc_id] = WRTS_SIZE;
-      }
-    memcpy(_file_event._subevents[idx_subevent]._data + total_proc_size[evnt->proc_id],
-	   evnt->data, evnt->size);
-    total_size += evnt->size;
-    total_proc_size[evnt->proc_id] += evnt->size;
-    _TRACE("  Total size = %d\n", total_size);
-    _TRACE("  Proc size [%d] = %d\n", evnt->proc_id, total_proc_size[evnt->proc_id]);
-
-    delete evnt;
-  }
-  events_curevent.clear();
-
+  _file_event._header._info.l_count = 1;
+  _file_event._nsubevents = 1;
+  lmd_subevent& se = *(lmd_subevent *)
+    _file_event._defrag_event.allocate(sizeof (lmd_subevent));
+  se._header = evnt->_header;
+  se._data   =  (char*)_file_event._defrag_event_many.allocate(WRTS_SIZE+evnt->size);
+  wrts_header wr(whirr);
+  memcpy(se._data, &wr, sizeof(wr));
+  memcpy(se._data+sizeof(wr),
+         evnt->data, evnt->size);
+  se._header._header.l_dlen = (evnt->size+WRTS_SIZE)/2 + 2; 
+  _file_event._subevents=&se;
+  
+  delete evnt;
+  
   _file_event._status = LMD_EVENT_GET_10_1_INFO_ATTEMPT
     | LMD_EVENT_HAS_10_1_INFO
     | LMD_EVENT_LOCATE_SUBEVENTS_ATTEMPT;
-
-  _TRACE("=> return multi event buffer\n");
+  // fprintf(stderr, "all done!");
   return &_file_event;
 }
 
@@ -193,21 +136,18 @@ multievent_entry* lmd_source_multievent::next_singleevent()
 {
   _TRACE("lmd_source_multievent::next_singleevent()\n");
 
+  
   // No more events available? Load more!
-  if(events_available.empty() || events_available.front()->wrts+200*50/3 > wr_ts_current)
+  while( events_available.empty() || events_available.front()->wrts+200*50/3 > wr_ts_current)
   {
     input_status = load_events();
-
-    // Still no available? Either end of file or wrong event type => Break
-    if(events_available.empty())
-      {
-	//fprintf(stderr, "lmd_source_multievent::next_singleevent(): no event available after load_events()\n");
-        // this happens on T3 (sync trigger)
-	return NULL;
-      }
+    if (input_status==eof)
+      return nullptr;
   }
-
-  return events_available.front();
+  
+  auto res=events_available.front();
+  events_available.pop_front();
+  return res;
 }
 
 
@@ -326,7 +266,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
     int last_mod=-1;
     int last_ch=0xfe;
     
-    for(pl_data = pl_start; pl_data < pl_end; )
+    for(pl_data = pl_start; pl_data < pl_end; ) // note: it is terrible form to change a loop variable in the loop body --pk
     {
       // Skip DMA alignment words
       while((*pl_data & 0xfff00000) == 0xadd00000)
@@ -392,8 +332,6 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
           pl_data += bufsize/4;
         }
 
-        
-
         ts_header = (int64_t)((*pl_data++) & 0x00ffffff) << 32;
         ts_header |= (int64_t)*(pl_data++);
         
@@ -443,20 +381,10 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
                proc_id, sfp_id, module_id, _file_event._header._info.i_trigger, 
                proc_ts_skew[20*sfp_id + module_id] );
 
-      } //T_TCAL
-      else  //irrelevant
-        {
-          pl_data += bufsize/4;
-          if(proc_ts_skew.count(20*sfp_id + module_id) == 1)
-            ts_skew = proc_ts_skew[20*sfp_id + module_id];
-          else
-            ts_skew = 0;
-        }
-      found_special_ch[sfp_id][module_id]=1;
-      continue; // skip special channel in output
-      //TODO: keep in stream
-     // end of special channel
-
+        continue; // skip special channel in output
+        //TODO: keep in stream
+        // end of special channel
+      }
       // _TRACE(" + Channel %d\n", channel);
 
       // Read all events within current GOSIP buffer
@@ -586,15 +514,3 @@ bool multievent_entry::compare(const multievent_entry *e1, const multievent_entr
 {
   return (e1->wrts < e2->wrts);
 }
-
-
-lmd_source_multievent::lmd_source_multievent() : l_count(0), events_available(CIRC_BUF_SIZE)
-{
-  // Create a double buffer for event reading
-  // - will later be extended if needed
-
-  assert(sizeof(wrts_header)==5*4);
-
-  //init_ts_conv();
-}
-
