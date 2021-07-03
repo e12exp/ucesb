@@ -1,10 +1,11 @@
 #ifndef _LMD_SOURCE_MULTIEVENT_H_
 #define _LMD_SOURCE_MULTIEVENT_H_
 
-#include <deque>
 #include <list>
 #include <map>
-
+#include <boost/circular_buffer.hpp>
+#include <vector>
+#include <deque>
 #include <stdint.h>
 
 struct lmd_source_multievent;
@@ -23,46 +24,8 @@ struct lmd_event_multievent;
 #define _TRACE(...)
 #endif
 
-struct keep_buffer_wrapper : public keep_buffer_many
-{
-protected:
-   int refcount;
-
-public:
-   keep_buffer_wrapper() : refcount(0) {};
-
-   void release()
-   {
-      _TRACE("[%p] keep_buffer_wrapper::release(). refcount = %d\n", this, refcount);
-      if(!refcount)
-         return;
-
-      if(--refcount == 0)
-      {
-         _TRACE("[%p] Release\n", this);
-         keep_buffer_many::release();
-      }
-
-      assert(refcount >= 0);
-   }
-
-   void* allocate(size_t size)
-   {
-      refcount++;
-      _TRACE("[%p] keep_buffer_wrapper::allocate(). refcount = %d\n", this, refcount);
-      return keep_buffer_many::allocate(size);
-   }
-
-   bool available()
-   {
-      _TRACE("[%p] keep_buffer_wrapper::available() => %d\n", this, !refcount);
-      return !refcount;
-   }
-};
-
 struct multievent_entry
 {
-  keep_buffer_wrapper *data_alloc;
   lmd_subevent_10_1_host _header; 
   uint64_t timestamp;
   uint64_t wrts;
@@ -72,22 +35,19 @@ struct multievent_entry
   uint32_t proc_id;
   uint32_t *data;
   uint32_t size;	
-	multievent_entry(keep_buffer_wrapper *data_alloc) : data_alloc(data_alloc), data(NULL) {}
+	multievent_entry() : data(NULL) {}
 	~multievent_entry()
 	{
 	       _TRACE("multievent_entry::dtor()\n");
 
                if(data != NULL)
                {
-                  data_alloc->release();
-                  data = NULL;
+                 free(data);
                }
 	}
 
         static bool compare(const multievent_entry *e1, const multievent_entry *e2);
 
-        void* operator new(size_t bytes, keep_buffer_wrapper &alloc);
-        void operator delete(void *ptr);
 };
 
 typedef std::deque< multievent_entry* > multievent_queue;
@@ -97,8 +57,6 @@ class lmd_source_multievent : public lmd_source
 protected:
   enum file_status_t { ready, eof, unknown_event };
   
-  std::list<keep_buffer_wrapper*> data_alloc;
-  std::list<keep_buffer_wrapper*>::iterator curbuf;
   uint64_t febex_ts_current[4]{}; // at readout
   uint64_t wr_ts_current{0};
   uint64_t febex_ts_last[4]{};    // at readout
@@ -112,13 +70,17 @@ protected:
   lmd_event_hint event_hint;
   lmd_event_10_1_host input_event_header;
   sint32 l_count;
-	
-  multievent_queue events_available;
-  multievent_queue events_curevent;
-  multievent_queue events_read;
+
+  // we have 4*16*16=1024 channels, each of which could send us up to 200 hits
+  // plus some overhead (e.g *2) for overlapping readouts.
+  // this works out at 4 MB
+  #define CIRC_BUF_SIZE size_t(4*16*16*256*2)
+  //#define CIRC_BUF_SIZE size_t(4*16*2)
+  boost::circular_buffer<multievent_entry* > events_available;
+  std::vector<multievent_entry* > events_curevent;
 
   file_status_t load_events();
-	
+  
   multievent_entry* next_singleevent();
   
 public:

@@ -11,10 +11,8 @@
 #define SUBEVT_SUBTYPE 10000
 //#define SUBEVT_PROCID 2
 
-// Time calibration trigger type
-#define T_TCAL 1
 
-#define TS_SKEW_RATE_WARN 1e-10
+#define TS_SKEW_RATE_WARN 1e-6
 
 #define DT (_conf._eventbuilder_ts)
 
@@ -98,7 +96,6 @@ lmd_event *lmd_source_multievent::get_event()
 
   //        if(evnt)
   //          events_available.push_front(evnt);
-
   if(!evnt && input_status != eof)
   {
       // Something went wrong while loading data
@@ -107,7 +104,7 @@ lmd_event *lmd_source_multievent::get_event()
     fprintf(stderr, "error, returned null!\n");
     events_curevent.clear();
     //    return &_file_event;
-    return NULL;
+    return NULL; //TODO
   }
   
   else if(!evnt && input_status == eof && events_curevent.empty())
@@ -150,7 +147,7 @@ lmd_event *lmd_source_multievent::get_event()
   total_size = 0;
   _TRACE(" Collecting events\n");
 
-  for(multievent_queue::iterator it = events_curevent.begin(); it != events_curevent.end(); it++)
+  for(decltype(events_curevent)::iterator it = events_curevent.begin(); it != events_curevent.end(); it++)
   {
     evnt = *it;
     // Map hit to correct subevent for origin processor ID
@@ -178,7 +175,6 @@ lmd_event *lmd_source_multievent::get_event()
     _TRACE("  Total size = %d\n", total_size);
     _TRACE("  Proc size [%d] = %d\n", evnt->proc_id, total_proc_size[evnt->proc_id]);
 
-    // Does not really delete the event, but unref it in the keep_buffer_many
     delete evnt;
   }
   events_curevent.clear();
@@ -227,7 +223,6 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   int sfp_id, module_id, channel_id;
   uint32_t proc_id;
   int64_t ts_normalize[4]{-1,-1,-1,-1};
-  keep_buffer_wrapper *alloc;
 
   static uint16_t badmodules[4][20]; //sfp, module
   memset(badmodules, 0, sizeof(badmodules));
@@ -270,23 +265,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
     return unknown_event;
   }
 
-  if(curbuf == data_alloc.end())
-    curbuf = data_alloc.begin();
-  alloc = *curbuf;
 
-  // Check if current buffer is free or if it still contains some events in the queue
-  // -> If so, we need one more buffer
-  if(!alloc->available())
-  {
-    
-    alloc = new keep_buffer_wrapper();  // VALGRIND
-    curbuf = data_alloc.insert(curbuf, alloc);
-    if (0)
-      fprintf(stderr, "data_alloc.size()==%ld, events_available.size()=%ld\n", data_alloc.size(), events_available.size());
-    _TRACE("lmd_source_multievent::load_events(): Creating new buffer. Total count: %ld\n", data_alloc.size());
-  }
 
   buguser++;
+  auto sorted_up_to=events_available.end();
+  
   for(int i = 0; i < _file_event._nsubevents; i++)
   {
     se = &(_file_event._subevents[i]);
@@ -409,13 +392,12 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
           pl_data += bufsize/4;
         }
 
-        if(1 || _file_event._header._info.i_trigger == T_TCAL)
-        {
+        
 
-          ts_header = (int64_t)((*pl_data++) & 0x00ffffff) << 32;
-          ts_header |= (int64_t)*(pl_data++);
-
-          if(ts_normalize[sfp_id] < 0) // module 0
+        ts_header = (int64_t)((*pl_data++) & 0x00ffffff) << 32;
+        ts_header |= (int64_t)*(pl_data++);
+        
+        if(ts_normalize[sfp_id] < 0) // module 0
           {
             ts_normalize[sfp_id] = ts_header;
             ts_skew = 0;
@@ -427,24 +409,25 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 		dropall=1;
 	      }
           }
-	  else if (std::abs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
+        else if (std::abs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
 	  {
 	    bankswitch_issue[sfp_id][module_id]=1;
 	    ts_skew=0xdeadbeefdeadbeef;
 	  }
-          else // module N
+        else // module N
           {
             ts_skew = ts_header - ts_normalize[sfp_id];
             double skew_rate= double(ts_skew)/double(ts_normalize[sfp_id]);
-
+            
             if(std::abs(skew_rate)>10 && std::abs(skew_rate) > TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
-            {
-              fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %02d:, drift: %3ld,  rate: %e\n",
-		      proc_id, sfp_id,
-		      module_id, ts_skew,
-                      skew_rate
-		      );
-            }
+              {
+                fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %02d:, drift: %3ld,  rate: %e\n",
+                        proc_id, sfp_id,
+                        module_id, ts_skew,
+                        skew_rate
+                        );
+                fprintf(stderr, "%d, %d, %d\n", std::abs(ts_skew)>10 , std::abs(skew_rate) > TS_SKEW_RATE_WARN  , ! (buguser%BUGUSER));
+              }
 	    if (labs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
 	      {
 		fprintf(stderr, "[ERROR] Large change in timestamp skew for processor %d, SFP %d, module %d: %ld -> %ld (Trigger %d). Events ignored.\n",
@@ -454,14 +437,14 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 		bankswitch_issue[sfp_id][module_id]=2;
 	      }
           } 
-          proc_ts_skew[20*sfp_id + module_id] = ts_skew;
-	  found_special_ch[sfp_id][module_id]=1;
-	  _TRACE("processor %d, SFP %d, module %d (trigger %d, skew: %ld)\n\n",
-		 proc_id, sfp_id, module_id, _file_event._header._info.i_trigger, 
-		 proc_ts_skew[20*sfp_id + module_id] );
+        proc_ts_skew[20*sfp_id + module_id] = ts_skew;
+        found_special_ch[sfp_id][module_id]=1;
+        _TRACE("processor %d, SFP %d, module %d (trigger %d, skew: %ld)\n\n",
+               proc_id, sfp_id, module_id, _file_event._header._info.i_trigger, 
+               proc_ts_skew[20*sfp_id + module_id] );
 
-        } //T_TCAL
-        else  //irrelevant
+      } //T_TCAL
+      else  //irrelevant
         {
           pl_data += bufsize/4;
           if(proc_ts_skew.count(20*sfp_id + module_id) == 1)
@@ -469,10 +452,10 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
           else
             ts_skew = 0;
         }
-	found_special_ch[sfp_id][module_id]=1;
-        continue; // skip special channel in output
-        //TODO: keep in stream
-      } // end of special channel
+      found_special_ch[sfp_id][module_id]=1;
+      continue; // skip special channel in output
+      //TODO: keep in stream
+     // end of special channel
 
       // _TRACE(" + Channel %d\n", channel);
 
@@ -523,7 +506,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  
 	if (good)
 	{
-	  event_entry = new (*alloc) multievent_entry(alloc);
+	  event_entry = new multievent_entry;
 	  event_entry->_header = se->_header;
 	  event_entry->channel_id = (uint8_t)channel_id;
 	  event_entry->module_id = (uint8_t)module_id;
@@ -543,20 +526,19 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  
 	  event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
 	  _TRACE("    Size: %d\n", event_entry->size);
-	  event_entry->data = (uint32_t*)alloc->allocate(event_entry->size); // VALGRIND
+	  event_entry->data = (uint32_t*)malloc(event_entry->size);
 
 	  memcpy(event_entry->data, pl_bufhead, 8);
 	  memcpy(event_entry->data + 2, pl_data, event_entry->size - 8);
-#define UPDATE_TS 0
-#if UPDATE_TS
-	  event_entry->data[5]=(uint32_t)((event_entry->timestamp)>>32);
-	  event_entry->data[4]=(uint32_t)(event_entry->timestamp);
-#endif
           event_entry->wrts=febex2wrts(event_entry->timestamp, event_entry->sfp_id);
 	  // Adjust size of GOSIP buffer header
 	  *(event_entry->data + 1) = event_entry->size - 8;
-	  
-	  events_read.push_back(event_entry);
+	  if (events_available.full())
+            {
+              fprintf(stderr, "Oops, I could not insert into events_available because it is full. CIRC_BUF_SIZE is %ld, consider increasing that.\n", CIRC_BUF_SIZE);
+              exit(1);
+            }
+	  events_available.push_back(event_entry);
 	} // if good
 	hit_no++;
 	pl_data += (*pl_data & 0xffff)/4;
@@ -576,18 +558,27 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       fprintf(stderr, "skipping to next event.\n");
       return load_events();
     }
-  
-  if(events_read.empty())
+  /*
+  printf("%p, %p ", &(*sorted_up_to), &(*events_available.end()));
+  exit(0);
+  if(sorted_up_to==events_available.end())
     return unknown_event;
+  */
 
-  curbuf++;
-
-  // Sort current buffer by timestamp and add to available events
-  //sort(events_read.begin(), events_read.end(), multievent_entry::compare);
-  events_available.insert(events_available.end(), events_read.begin(), events_read.end());
-  sort(events_available.begin(), events_available.end(), multievent_entry::compare);  
+#if 0
+  //this does not seem to work with circular buffers:
+  sort(sorted_up_to, events_available.end(), multievent_entry::compare);
+  std::inplace_merge(events_available.begin(), sorted_up_to, events_available.end(), multievent_entry::compare);
+#else
+  sort(events_available.begin(), events_available.end(), multievent_entry::compare);
+  /*  fprintf(stderr, "\n\n\nafter read:\n");
+  for (auto&& e: events_available)
+    fprintf(stderr, "wrts=0x%lx\n", e->wrts);
+  fprintf(stderr, "\n\n\n");
+  */
+#endif
+  
   // ^-- sort everything, in case an event made it in one readout for one febex but not in another
-  events_read.clear();
   return ready;
 }
 
@@ -596,27 +587,12 @@ bool multievent_entry::compare(const multievent_entry *e1, const multievent_entr
   return (e1->wrts < e2->wrts);
 }
 
-void* multievent_entry::operator new(size_t bytes, keep_buffer_wrapper &alloc)
-{
-  return alloc.allocate(bytes); // VALGRIND
-}
 
-void multievent_entry::operator delete(void *ptr)
-{
-  _TRACE("delete %p\n", ptr);
-  multievent_entry *e = static_cast<multievent_entry*>(ptr);
-  e->data_alloc->release(); //VALGRIND
-}
-
-lmd_source_multievent::lmd_source_multievent() : l_count(0)
+lmd_source_multievent::lmd_source_multievent() : l_count(0), events_available(CIRC_BUF_SIZE)
 {
   // Create a double buffer for event reading
   // - will later be extended if needed
 
-  data_alloc.push_back(new keep_buffer_wrapper());
-  data_alloc.push_back(new keep_buffer_wrapper());
-  fprintf(stderr, "alloc!\n");
-  curbuf = data_alloc.begin();
   assert(sizeof(wrts_header)==5*4);
 
   //init_ts_conv();
