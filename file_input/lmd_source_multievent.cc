@@ -162,9 +162,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
   multievent_entry *event_entry;
   lmd_subevent *se;
   char *pb_start, *pb_end;
-  uint32_t *pl_start, *pl_end, *pl_data, *pl_bufstart, *pl_bufhead;
-  uint32_t bufsize, channel_header;
-  int sfp_id, module_id, channel_id;
+  uint32_t *pl_start, *pl_end, *pl_bufstart, *pl_bufhead;
   uint32_t proc_id;
   int64_t ts_normalize[4]{-1,-1,-1,-1};
 
@@ -231,7 +229,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
     pl_end = (uint32_t*)pb_end;
     uint64_t wr_latest=0;
 
-    pl_data=pl_start;
+    uint32_t* pl_data=pl_start;
     // get WR timestamp
     if (pl_data < pl_end) // WR header.
       {
@@ -285,12 +283,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       }
 
       pl_bufhead = pl_data;
-      channel_header = *pl_data++;
-      bufsize = *pl_data++;			
-
-      channel_id = (uint8_t)((channel_header >> 24) & 0xff);
-      module_id = (uint8_t)((channel_header >> 16) & 0xff);
-      sfp_id = (uint8_t)((channel_header >> 12) & 0xf);
+      uint32_t channel_header = *pl_data++;
+      uint32_t bufsize = *pl_data++;			
+      int channel_id = (uint8_t)((channel_header >> 24) & 0xff);
+      int module_id = (uint8_t)((channel_header >> 16) & 0xff);
+      int sfp_id = (uint8_t)((channel_header >> 12) & 0xf);
       assert(sfp_id<4);
       // check for monotony in sfp, mod, channel
       {
@@ -324,11 +321,13 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       }
 
       int hit_no=0;
-      int64_t ts_skew, ts_header;
-      // Get readout timestamp from special channel and correct possible TS skew between modules/crates/processors
-      if(channel_id == 0xff)
+      int64_t ts_skew=0;
+
+      uint64_t fbxts;
+      
+      if(channel_id == 0xff) // note: ch 255 comes first. 
       {
-	_TRACE("Found_SC sfp=%d, mod=%d, tsn=%ld\n", sfp_id, module_id, ts_normalize[sfp_id]);
+        _TRACE("Found_SC sfp=%d, mod=%d, tsn=%ld\n", sfp_id, module_id, ts_normalize[sfp_id]);
         if(bufsize != 8)
         {
           fprintf(stderr, "[ERROR] Special channel 0xff has invalid data size: %d (Processor %d, SFP %d, module %d)\n",
@@ -336,12 +335,12 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
           pl_data += bufsize/4;
         }
 
-        ts_header = (int64_t)((*pl_data++) & 0x00ffffff) << 32;
-        ts_header |= (int64_t)*(pl_data++);
+        fbxts=*(pl_data + 1)
+          | ((uint64_t)(*(pl_data) & 0x00ffffff) << 32);
         
         if(ts_normalize[sfp_id] < 0) // module 0
           {
-            ts_normalize[sfp_id] = ts_header;
+            ts_normalize[sfp_id] = fbxts;
             ts_skew = 0;
             _TRACE("Current base timestamp for sfp %d: 0x%08lx\n", (int)sfp_id, ts_normalize[sfp_id]);
 	    update_ts_conv(wr_latest, ts_normalize[sfp_id], (uint8_t)sfp_id);
@@ -362,17 +361,17 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
                        sfp_id, other_sfp, ts_skew2, skew_rate);
               }
           }
-        else if (std::abs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
+        else if (std::abs(fbxts-febex_ts_last[sfp_id])<1000) // module N, BS issue
 	  {
 	    bankswitch_issue[sfp_id][module_id]=1;
 	    ts_skew=0xdeadbeefdeadbeef;
 	  }
         else // module N
           {
-            ts_skew = ts_header - ts_normalize[sfp_id];
+            ts_skew = fbxts - ts_normalize[sfp_id];
             double skew_rate= double(ts_skew)/double(ts_normalize[sfp_id]);
             
-            if(std::abs(skew_rate)>=0 && std::abs(skew_rate) >= TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
+            if(1 ) //std::abs(skew_rate)>=0 && std::abs(skew_rate) >= TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
               {
                 fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %02d:, drift: %3ld,  rate: %e\n",
                         proc_id, sfp_id,
@@ -396,7 +395,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
                proc_id, sfp_id, module_id, _file_event._header._info.i_trigger, 
                proc_ts_skew[20*sfp_id + module_id] );
 
-        continue; // skip special channel in output
+        //continue; // skip special channel in output
         //TODO: keep in stream
         // end of special channel
       }
@@ -405,20 +404,22 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       // Read all events within current GOSIP buffer
       for(pl_bufstart = pl_data; pl_data < pl_bufstart + bufsize/4; )
       {
+        uint64_t fbxts=(*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32))-ts_skew;
+        
         _TRACE(" ++ Event\n");
         // Check event header
-        if(!(   (*pl_data & 0xffff0000) == 0xAFFE0000     // old Febex FW  
-		|| (*pl_data & 0xffff0000) == 0x115A0000  // Febex FW 1.2+
-		|| (*pl_data & 0xffff0000) == 0xB00B0000)) // Pulser
+        if(!((*pl_data & 0xffff0000) == 0xAFFE0000     // old Febex FW  
+             || (*pl_data & 0xffff0000) == 0x115A0000  // Febex FW 1.2+
+             || (*pl_data & 0xffff0000) == 0xB00B0000 // Pulser
+             || (channel_id == 0xff)))
 	  {
           // Oops... Something went wrong
 	    fprintf(stderr, "[WARNING] Invalid event header: 0x%08x\n", *pl_data);
 	    break;
 	  }
 
-	uint64_t fbxts=(*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32)) -  ts_skew;
 	bool good=!bankswitch_issue[sfp_id][module_id] && !dropall;
-	if (good)
+	if (good && channel_id!=0xff)
 	  {
 	    if ((int64_t)fbxts<(int64_t)febex_ts_last[sfp_id]-50 )
 	      {
@@ -484,7 +485,12 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  events_available.push_back(event_entry);
 	} // if good
 	hit_no++;
-	pl_data += (*pl_data & 0xffff)/4;
+        if (channel_id != 0xff)
+          pl_data += (*pl_data & 0xffff)/4;
+        else
+          pl_data += bufsize/4;
+
+        // fprintf(stderr, "Length for %d.%d.%d: %d \n",sfp_id, module_id, channel_id,  (*pl_data & 0xffff)/4);
       }
     }
   }
