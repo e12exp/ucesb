@@ -13,6 +13,10 @@
 
 
 #define TS_SKEW_RATE_WARN 1e-6
+#define DEBUGDRIFT 0
+
+
+//#define TS_SKEW_RATE_WARN 0 //1e-16
 
 #define DT (_conf._eventbuilder_ts)
 
@@ -346,6 +350,17 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 		fprintf(stderr, "DAQ restart detected. dropping first readout.\n");
 		dropall=1;
 	      }
+
+            // two neighboring sfps should have the same exploder, check if their clock count is compatible.
+
+            int other_sfp=sfp_id^0x01;
+            if (ts_normalize[other_sfp]>0 &&  ! (buguser%BUGUSER) && DEBUGDRIFT)
+              {
+                int64_t ts_skew2 =  ts_normalize[sfp_id]-ts_normalize[other_sfp];
+                double skew_rate= double(ts_skew)/double(ts_normalize[sfp_id]);
+               fprintf(stderr, "[WARNING] drift between %d.0.* and %d.0.*: drift: %3ld,  rate: %e\n", 
+                       sfp_id, other_sfp, ts_skew2, skew_rate);
+              }
           }
         else if (std::abs(ts_header-febex_ts_last[sfp_id])<1000) // module N, BS issue
 	  {
@@ -357,14 +372,14 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
             ts_skew = ts_header - ts_normalize[sfp_id];
             double skew_rate= double(ts_skew)/double(ts_normalize[sfp_id]);
             
-            if(std::abs(skew_rate)>10 && std::abs(skew_rate) > TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
+            if(std::abs(skew_rate)>=0 && std::abs(skew_rate) >= TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
               {
                 fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %02d:, drift: %3ld,  rate: %e\n",
                         proc_id, sfp_id,
                         module_id, ts_skew,
                         skew_rate
                         );
-                fprintf(stderr, "%d, %d, %d\n", std::abs(ts_skew)>10 , std::abs(skew_rate) > TS_SKEW_RATE_WARN  , ! (buguser%BUGUSER));
+                //fprintf(stderr, "%d, %d, %d\n", std::abs(ts_skew)>10 , std::abs(skew_rate) > TS_SKEW_RATE_WARN  , ! (buguser%BUGUSER));
               }
 	    if (labs(ts_skew-proc_ts_skew[20*sfp_id + module_id])>10000 && proc_ts_skew[20*sfp_id + module_id])
 	      {
