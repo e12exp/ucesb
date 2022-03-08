@@ -14,7 +14,7 @@ struct lmd_event_multievent;
 
 #include <math.h>
 
-#define _ENABLE_TRACE 1
+#define _ENABLE_TRACE 0
 #if _ENABLE_TRACE
 #define _TRACE(...) fprintf(stderr, __VA_ARGS__)
 #else

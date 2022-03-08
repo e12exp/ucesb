@@ -106,7 +106,9 @@ lmd_event *lmd_source_multievent::get_event()
   uint64_t whirr = evnt->wrts;
   static uint64_t whirr_prev = 0;
   if (whirr_prev>whirr)
-    fprintf(stderr, "WR non-monotonous, delta=%ld\n", whirr-whirr_prev);
+    fprintf(stderr, "WR non-monotonous, delta=%ld, current=0x%lx, last=0x%lx, %d.%d.%d\n",
+            whirr-whirr_prev, whirr, whirr_prev,
+            evnt->sfp_id, evnt->module_id, evnt->channel_id);
   assert (whirr_prev<=whirr);  
   whirr_prev = whirr;
   
@@ -371,10 +373,10 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
             ts_skew = fbxts - ts_normalize[sfp_id];
             double skew_rate= double(ts_skew)/double(ts_normalize[sfp_id]);
             
-            if(1 ) //std::abs(skew_rate)>=0 && std::abs(skew_rate) >= TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
+            if( std::abs(skew_rate)>=0 && std::abs(skew_rate) >= TS_SKEW_RATE_WARN  && ! (buguser%BUGUSER))
               {
-                fprintf(stderr, "[WARNING] Timestamp skew for processor %d, SFP %d, module %02d:, drift: %3ld,  rate: %e\n",
-                        proc_id, sfp_id,
+                fprintf(stderr, "[WARNING] Timestamp skew for %d.%d:, drift: %3ld,  rate: %e\n",
+                        sfp_id,
                         module_id, ts_skew,
                         skew_rate
                         );
@@ -404,7 +406,8 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       // Read all events within current GOSIP buffer
       for(pl_bufstart = pl_data; pl_data < pl_bufstart + bufsize/4; )
       {
-        uint64_t fbxts=(*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32))-ts_skew;
+        if (channel_id != 0xff) // otherwise, keey TS read above. 
+          fbxts=(*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32))-ts_skew;
         
         _TRACE(" ++ Event\n");
         // Check event header
