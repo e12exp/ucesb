@@ -125,6 +125,7 @@ lmd_event *lmd_source_multievent::get_event()
   memcpy(se._data+sizeof(wr),
          evnt->data, evnt->size);
   se._header._header.l_dlen = (evnt->size+WRTS_SIZE)/2 + 2; 
+  //printf("size=%d\n", se._header._header.l_dlen);
   _file_event._subevents=&se;
   
   delete evnt;
