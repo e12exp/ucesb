@@ -31,18 +31,29 @@ struct multievent_entry
   uint8_t sfp_id;
   uint32_t proc_id;
   uint32_t *data;
-  uint32_t size;	
-	multievent_entry() : data(NULL) {}
-	~multievent_entry()
-	{
-	       _TRACE("multievent_entry::dtor()\n");
-
-               if(data != NULL)
-               {
-                 free(data);
-               }
-	}
-        static bool compare(const multievent_entry *e1, const multievent_entry *e2);
+  uint32_t size;
+  uint32_t ro_idx;
+  multievent_entry() : data(NULL) {}
+  ~multievent_entry()
+  {
+    _TRACE("multievent_entry::dtor()\n");
+    
+    if(data != NULL)
+      {
+        free(data);
+      }
+  }
+  static bool compare(const multievent_entry *e1, const multievent_entry *e2);
+  void dump()
+  {
+    _TRACE("multievent_entry: ch %02d.%02d.%02d, no %d in readout block", sfp_id, module_id, channel_id, ro_idx);
+    _TRACE("  febexTS: 0x%lx\n", timestamp);
+    _TRACE("  WRTS   : 0x%lx\n", wrts);
+    _TRACE("  size   : %d bytes\n  data", size);
+    for (size_t i=0; i<size; i++)
+      _TRACE("%s%02x" data[i], i%16?" ":"\n   ");
+    _TRACE("\n   (EOD)\n")
+  }
 };
 
 typedef std::deque< multievent_entry* > multievent_queue;

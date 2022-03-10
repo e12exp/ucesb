@@ -126,6 +126,7 @@ lmd_event *lmd_source_multievent::get_event()
          evnt->data, evnt->size);
   se._header._header.l_dlen = (evnt->size+WRTS_SIZE)/2 + 2; 
   //printf("size=%d\n", se._header._header.l_dlen);
+  _TRACE("returning event with evnt->size, l_dlen=%d\n", evnt->size, se._header._header.l_dlen);
   _file_event._subevents=&se;
   
   delete evnt;
@@ -461,7 +462,9 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  event_entry->sfp_id = (uint8_t)sfp_id;
 	  event_entry->proc_id = proc_id;
 	  event_entry->timestamp = fbxts;
-	  
+	  event_entry->ro_idx=hit_no;
+
+          
 	  if (!found_special_ch[sfp_id][module_id])
 	    {
 	      fprintf(stderr, "no special channel for %d.%d.*\n", sfp_id, module_id);
@@ -471,8 +474,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  //fprintf(stderr, "found a febex ts %ulld  @ %01d.%02d.%0d2\n", -febex_ts_current+fbxts,sfp_id, module_id, channel_id);
 	  _TRACE("skew: %ld", ts_skew);
 	  //       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ulld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
-	  
-	  event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
+
+          if (channel_id!=0xff)
+            event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
+          else
+            event_entry->size = bufsize+8;
 	  _TRACE("    Size: %d\n", event_entry->size);
 	  event_entry->data = (uint32_t*)malloc(event_entry->size);
 
