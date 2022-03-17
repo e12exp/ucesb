@@ -113,9 +113,12 @@ lmd_event *lmd_source_multievent::get_event()
   whirr_prev = whirr;
   
   _file_event.release();
+  static uint32_t lcount=0;
   _file_event._header = input_event_header;
-  _file_event._header._info.l_count = 1;
+  _file_event._header._info.l_count = lcount++;
   _file_event._nsubevents = 1;
+  
+  _file_event._header._info.i_trigger = evnt->trig_type;
   lmd_subevent& se = *(lmd_subevent *)
     _file_event._defrag_event.allocate(sizeof (lmd_subevent));
   se._header = evnt->_header;
@@ -190,6 +193,8 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
     return eof;
 
   _file_event.get_10_1_info();
+
+  auto cur_trig_type=_file_event._header._info.i_trigger;
   if(_file_event._header._header.i_type != 10 || _file_event._header._header.i_subtype != 1)
   {
     // printf("Discard:\n");
@@ -476,9 +481,15 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 	  //       fprintf(stdout, "FOOOFOOO Timestamp skew for processor %d, SFP %d, module %d: %ulld (Trigger %d)\n", proc_id, sfp_id, module_id, ts_skew, _file_event._header._info.i_trigger);
 
           if (channel_id!=0xff)
-            event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
+            {
+              event_entry->size = (*pl_data & 0xffff) + 8;	// Include GOSIP buffer header
+              event_entry->trig_type=1;   // payload events are always 1, no matter what trigger caused the readout
+            }
           else
-            event_entry->size = bufsize+8;
+            {
+              event_entry->size = bufsize+8;
+              event_entry->trig_type=cur_trig_type; // keep the type for special channel hits aka RO events.
+            }
 	  _TRACE("    Size: %d\n", event_entry->size);
 	  event_entry->data = (uint32_t*)malloc(event_entry->size);
 

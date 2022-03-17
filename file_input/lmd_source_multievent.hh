@@ -33,6 +33,7 @@ struct multievent_entry
   uint32_t *data;
   uint32_t size;
   uint32_t ro_idx;
+  uint16_t trig_type;
   multievent_entry() : data(NULL) {}
   ~multievent_entry()
   {
