@@ -26,6 +26,9 @@
 
 #define BUGUSER 0x10 // debug/soft error suppresion factor
 
+#define OUTPUT_SPECIAL 1
+
+
 uint64_t lmd_source_multievent::febex2wrts(uint64_t fbxts, uint8_t sfp) //TODO
 {
   assert(sfp<4);
@@ -413,7 +416,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
       // Read all events within current GOSIP buffer
       for(pl_bufstart = pl_data; pl_data < pl_bufstart + bufsize/4; )
       {
-        if (channel_id != 0xff) // otherwise, keey TS read above. 
+        if (channel_id != 0xff) // otherwise, keep TS read above. 
           fbxts=(*(pl_data + 2) | ((uint64_t)(*(pl_data + 3)) << 32))-ts_skew;
         
         _TRACE(" ++ Event\n");
@@ -503,7 +506,11 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
               fprintf(stderr, "Oops, I could not insert into events_available because it is full. CIRC_BUF_SIZE is %ld, consider increasing that.\n", CIRC_BUF_SIZE);
               exit(1);
             }
-	  events_available.push_back(event_entry);
+          if (channel_id!=0xff || OUTPUT_SPECIAL)
+            events_available.push_back(event_entry);
+          else
+            free(event_entry->data);
+          
 	} // if good
 	hit_no++;
         if (channel_id != 0xff)
