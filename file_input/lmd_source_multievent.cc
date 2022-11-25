@@ -243,7 +243,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
 
     uint32_t* pl_data=pl_start;
     // get WR timestamp
-    if (pl_data < pl_end) // WR header.
+    if (pl_data < pl_end && _conf._enable_eventbuilder!=-1) // WR header.
       {
 	if (*pl_data != _conf._enable_eventbuilder)
 	  {
