@@ -373,7 +373,7 @@ lmd_source_multievent::file_status_t lmd_source_multievent::load_events()  /////
                        sfp_id, other_sfp, ts_skew2, skew_rate);
               }
           }
-        else if (std::abs(fbxts-febex_ts_last[sfp_id])<1000) // module N, BS issue
+        else if (std::abs(int32_t(fbxts-febex_ts_last[sfp_id]))<1000) // module N, BS issue
 	  {
 	    bankswitch_issue[sfp_id][module_id]=1;
 	    ts_skew=0xdeadbeefdeadbeef;
