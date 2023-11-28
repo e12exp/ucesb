@@ -124,13 +124,14 @@ lmd_event *lmd_source_multievent::get_event()
   _file_event._header._info.i_trigger = evnt->trig_type;
   lmd_subevent& se = *(lmd_subevent *)
     _file_event._defrag_event.allocate(sizeof (lmd_subevent));
-  se._header = evnt->_header;
-  se._data   =  (char*)_file_event._defrag_event_many.allocate(WRTS_SIZE+evnt->size);
+  se._header = evnt->_header; //TODO: ctrl+10
+  // TODO: insert sync word for ch 0.16.0
+  se._data   =  (char*)_file_event._defrag_event_many.allocate(WRTS_SIZE+evnt->size); //TODO: sync
   wrts_header wr(whirr);
   memcpy(se._data, &wr, sizeof(wr));
   memcpy(se._data+sizeof(wr),
          evnt->data, evnt->size);
-  se._header._header.l_dlen = (evnt->size+WRTS_SIZE)/2 + 2; 
+  se._header._header.l_dlen = (evnt->size+WRTS_SIZE)/2 + 2; // TODO: sync: use value from above/2+2
   //printf("size=%d\n", se._header._header.l_dlen);
   _TRACE("returning event with evnt->size, l_dlen=%d\n", evnt->size, se._header._header.l_dlen);
   _file_event._subevents=&se;
