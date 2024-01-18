@@ -128,8 +128,10 @@ lmd_event *lmd_source_multievent::get_event()
   se._header.h_control = se._header.h_control + 10;
   wrts_header wr(whirr);
   if (evnt->sfp_id == 0 && evnt->module_id == 16 && evnt->channel_id == 0){ //SYNC Channel
-	uint32_t sync_ch_word = 0xf1a0;
-	se._data   =  (char*)_file_event._defrag_event_many.allocate(WRTS_SIZE+evnt->size+sizeof(sync_ch_word));
+	uint32_t energy_val = ((*((evnt->data)+10) & 0x0000ffff)<<16);
+	uint32_t sync_ch_word = energy_val + 0xf1a0;
+	se._data = (char*)_file_event._defrag_event_many.allocate(WRTS_SIZE+evnt->size+sizeof(sync_ch_word));
+
 	memcpy(se._data, &wr, sizeof(wr));
 	memcpy(se._data+sizeof(wr),&sync_ch_word,sizeof(sync_ch_word));
 	memcpy(se._data+sizeof(wr)+sizeof(sync_ch_word),
