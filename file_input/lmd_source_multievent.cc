@@ -127,6 +127,7 @@ lmd_event *lmd_source_multievent::get_event()
   se._header = evnt->_header;
   se._header.h_control = se._header.h_control + 10;
   wrts_header wr(whirr);
+  wr.system_id = wr.system_id +0x1000; //add 1 in front of WRID for the haeckselt data
   if (evnt->sfp_id == 0 && evnt->module_id == 16 && evnt->channel_id == 0){ //SYNC Channel
 	uint32_t energy_val = ((*((evnt->data)+10) & 0x0000ffff)<<16);
 	uint32_t sync_ch_word = energy_val + 0xf1a0;
