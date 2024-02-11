@@ -676,8 +676,8 @@ size_t lmd_input_tcp_buffer::read_info()
 
   /* We have checks just to catch obviously stupid values. */
 
-#define MAX_BUFFER_SIZE  0x08000000 // 128 MB
-#define MAX_STREAM_SIZE  0x20000000 // 256 MB
+#define MAX_BUFFER_SIZE  0x10000000 // 256 MB
+#define MAX_STREAM_SIZE  0x20000000 // 512 MB
 
   if (!_info.bufsize)
     ERROR("Refusing buffers with 0 size.  (connection was refused)");

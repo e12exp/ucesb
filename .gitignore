@@ -9,6 +9,7 @@ ext_writer_h101.runstamp
 *.o
 *.dep
 empty/empty
+empty/haecksler*
 empty/gen/
 empty/mc_gen/
 ext_reader_h101
