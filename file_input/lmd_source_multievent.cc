@@ -37,7 +37,7 @@ uint64_t lmd_source_multievent::febex2wrts(uint64_t fbxts, uint8_t sfp) //TODO
     fprintf(stderr, "febex2wrts: WRTS is zero. This should never happen.\n");
 
   return (int64_t)wr_ts_current+(int64_t)(double((int64_t)fbxts-(int64_t)febex_ts_current[sfp])
-                                          *ts_conv_slope[sfp])-2300;
+                                          *ts_conv_slope[sfp])-2300-2500;
 }
 
 void lmd_source_multievent::update_ts_conv(uint64_t wrts, uint64_t fbxts, uint8_t sfp)
